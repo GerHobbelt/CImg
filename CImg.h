@@ -178,9 +178,9 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
+//#ifndef WIN32_LEAN_AND_MEAN
+//#define WIN32_LEAN_AND_MEAN
+//#endif
 #include <windows.h>
 #ifndef _WIN32_IE
 #define _WIN32_IE 0x0400
