@@ -21048,30 +21048,45 @@ namespace cimg_library {
               arg1 = compile(ss4,s1,depth1,0,block_flags);
               s2 = ++s1; while (s2<se1 && (*s2!=',' || level[s2 - expr._data]!=clevel1)) ++s2;
               arg2 = compile(s1,s2,depth1,0,block_flags);
-              arg3 = 1; arg4 = 0;
+              arg3 = arg4 = 1; arg5 = 0;
               if (s2<se1) {
                 s1 = ++s2; while (s1<se1 && (*s1!=',' || level[s1 - expr._data]!=clevel1)) ++s1;
                 arg3 = compile(s2,s1,depth1,0,block_flags);
-                arg4 = s1<se1?compile(++s1,se1,depth1,0,block_flags):0;
+                if (s1<se1) {
+                  s2 = ++s1; while (s2<se1 && (*s2!=',' || level[s2 - expr._data]!=clevel1)) ++s2;
+                  arg4 = compile(s1,s2,depth1,0,block_flags);
+                  arg5 = s2<se1?compile(++s2,se1,depth1,0,block_flags):0;
+                }
               }
               _cimg_mp_check_type(arg1,1,2,0);
               _cimg_mp_check_type(arg2,2,2,0);
               _cimg_mp_check_const_scalar(arg3,3,3);
-              _cimg_mp_check_type(arg4,4,1,0);
+              _cimg_mp_check_const_scalar(arg4,4,3);
+              _cimg_mp_check_type(arg5,5,1,0);
               p1 = _cimg_mp_size(arg1);
               p2 = _cimg_mp_size(arg2);
-              p3 = (unsigned int)mem[arg3];
-              if (p2%p3) {
+              arg3 = (unsigned int)mem[arg3];
+              arg4 = (unsigned int)mem[arg4];
+              if (p1%arg3) {
+                _cimg_mp_strerr;
+                throw CImgArgumentException("[" cimg_appname "_math_parser] "
+                                            "CImg<%s>::%s: %s: Type of first arguments ('%s') "
+                                            "does not match with third argument 'nb_channelsX=%u', "
+                                            "in expression '%s'.",
+                                            pixel_type(),_cimg_mp_calling_function,s_op,
+                                            s_type(arg1)._data,arg3,s0);
+              }
+              if (p2%arg4) {
                 _cimg_mp_strerr;
                 throw CImgArgumentException("[" cimg_appname "_math_parser] "
                                             "CImg<%s>::%s: %s: Type of second arguments ('%s') "
-                                            "do not match with third argument 'nb_channelsP=%u', "
+                                            "does not match with fourth argument 'nb_channelsP=%u', "
                                             "in expression '%s'.",
                                             pixel_type(),_cimg_mp_calling_function,s_op,
-                                            s_type(arg1)._data,p3,s0);
+                                            s_type(arg2)._data,arg4,s0);
               }
-              pos = vector(p1*p3);
-              CImg<ulongT>::vector((ulongT)mp_map,pos,arg1,p1,arg2,p2,p3,arg4).move_to(code);
+              pos = vector(p1*arg4);
+              CImg<ulongT>::vector((ulongT)mp_map,pos,arg1,arg2,p1,p2,arg3,arg4,arg5).move_to(code);
               return_new_comp = true;
               _cimg_mp_return(pos);
             }
@@ -26417,15 +26432,16 @@ namespace cimg_library {
         double *ptrd = &_mp_arg(1) + 1;
         const double
           *ptrX = &_mp_arg(2) + 1,
-          *ptrP = &_mp_arg(4) + 1;
+          *ptrP = &_mp_arg(3) + 1;
         const unsigned int
-          sizX = (unsigned int)mp.opcode[3],
+          sizX = (unsigned int)mp.opcode[4],
           sizP = (unsigned int)mp.opcode[5],
-          nb_channelsP = (unsigned int)mp.opcode[6],
-          boundary_conditions = (unsigned int)_mp_arg(7);
-        CImg<doubleT>(ptrd,sizX,1,1,nb_channelsP,true) =
-          CImg<doubleT>(ptrX,sizX,1,1,1,true).get_map(CImg<doubleT>(ptrP,sizP/nb_channelsP,1,1,nb_channelsP,true),
-                                                      boundary_conditions);
+          nb_channelsX = (unsigned int)mp.opcode[6],
+          nb_channelsP = (unsigned int)mp.opcode[7],
+          boundary_conditions = (unsigned int)_mp_arg(8);
+        CImg<doubleT>(ptrd,sizX/nb_channelsX,1,1,nb_channelsX*nb_channelsP,true) =
+          CImg<doubleT>(ptrX,sizX/nb_channelsX,1,1,nb_channelsX,true).
+          get_map(CImg<doubleT>(ptrP,sizP/nb_channelsP,1,1,nb_channelsP,true),boundary_conditions);
         return cimg::type<double>::nan();
       }
 
@@ -29474,69 +29490,81 @@ namespace cimg_library {
 
     // Fast function to pre-evaluate common expressions.
     // (return 'true' in case of success, and set value of 'res').
+
+    // Use the version below to get statistics on fast evaluation of expressions.
     template<typename t>
-    bool __eval(const char *const expression, t &res) const {
-      if (!expression || !*expression) { res = (t)0; return true; }
-      const char c = *expression;
-      bool is_success = false;
-      char sep, end;
-      double val,val2;
-      int err;
-      if ((c>='0' && c<='9') || c=='.') { // Possible value
-        if (!expression[1]) { // Single digit
-          res = (t)(c - '0');
-          is_success = true;
-        } else if ((err = std::sscanf(expression,"%lf %c%lf %c",&val,&sep,&val2,&end))==1) { // Single value
-          res = (t)val;
-          is_success = true;
-        } else if (err==3) { // Value1 Operator Value2
-          switch (sep) {
-          case '+' : res = (t)(val + val2); is_success = true; break;
-          case '-' : res = (t)(val - val2); is_success = true; break;
-          case '*' : res = (t)(val*val2); is_success = true; break;
-          case '/' : res = (t)(val/val2); is_success = true; break;
-          case '%' : res = (t)cimg::mod(val,val2); is_success = true; break;
-          case '&' : res = (t)((long)val & (long)val2); is_success = true; break;
-          case '|' : res = (t)((long)val | (long)val2); is_success = true; break;
-          case '>' : res = (t)(val>val2); is_success = true; break;
-          case '<' : res = (t)(val<val2); is_success = true; break;
-          case ';' : res = (t)val2; is_success = true; break;
-          case '^' : res = (t)std::pow(val,val2); is_success = true; break;
+    bool __eval(const char *const expr, t &res) const {
+      static int n_success = 0, n_total = 0;
+      bool cond = __eval2(expr,res);
+      ++n_total;
+      if (cond) {
+        ++n_success;
+        std::fprintf(stderr,"\nEVAL(%s) -> %g [%s: %d %g %%]",
+                     expr,res,cimg::type<T>::string(),n_success,cimg::round(n_success*100.0/n_total,0.1));
+      } else std::fprintf(stderr,"\nEVAL(%s) failed [%s: %d %g %%]",
+                          expr,cimg::type<T>::string(),n_success,cimg::round(n_success*100.0/n_total,0.1));
+      return cond;
+    }
+
+    template<typename t>
+    bool __eval2(const char *const expr, t &res) const {
+
+#define __eval_op(op) if (std::sscanf(++ptr,"%lf %c",&val2,&end)==1) { res = (t)(op); return true; } else return false;
+
+      double val1, val2;
+      char end;
+      int n = 0;
+      if (!expr || !*expr) return false;
+      if (!expr[1]) switch (*expr) {
+        case 'w' : res = (t)_width; return true;
+        case 'h' : res = (t)_height; return true;
+        case 'd' : res = (t)_depth; return true;
+        case 's' : res = (t)_spectrum; return true;
+        case 'r' : res = (t)_is_shared; return true;
+        default : if (*expr>='0' && *expr<='9') { res = (t)(*expr - '0'); return true; }
+        }
+      if (*expr=='w' && expr[1]=='h') {
+        if (!expr[2]) { res = (t)(_width*_height); return true; }
+        if (expr[2]=='d') {
+          if (!expr[3]) { res = (t)(_width*_height*_depth); return true; }
+          if (expr[3]=='s' && !expr[4]) { res = (t)(_width*_height*_depth*_spectrum); return true; }
+        }
+        if (expr[2]=='s' && !expr[3]) { res = (t)(_width*_height*_spectrum); return true; }
+      }
+      if (*expr=='!' && std::sscanf(expr + 1,"%lf %c",&val1,&end)==1) { res = (t)(!val1); return true; }
+
+      const char *ptr = expr;
+      while (*ptr && cimg::is_blank(*ptr)) ++ptr;
+
+      if ((*ptr=='w' || *ptr=='h' || *ptr=='d' || *ptr=='s') || std::sscanf(expr,"%lf %n",&val1,&n)==1) {
+        if (!n) {
+          switch (*ptr) {
+          case 'w': val1 = (double)_width; break;
+          case 'h': val1 = (double)_height; break;
+          case 'd': val1 = (double)_depth; break;
+          case 's': val1 = (double)_spectrum; break;
           }
+          ++ptr; while (*ptr && cimg::is_blank(*ptr)) ++ptr;
+        } else ptr+=n;
+
+        switch (*ptr) {
+        case 0 : res = (t)val1; return true;
+        case '+' : __eval_op(val1 + val2);
+        case '-' : __eval_op(val1 - val2);
+        case '*' : __eval_op(val1 * val2);
+        case '/' : __eval_op(val1 / val2);
+        case '%' : __eval_op(cimg::mod(val1,val2));
+        case '&' : if (ptr[1]=='&') { ++ptr; __eval_op(val1 && val2); } else { __eval_op((long)val1 & (long)val2); }
+        case '|' : if (ptr[1]=='|') { ++ptr; __eval_op(val1 || val2); } else { __eval_op((long)val1 | (long)val2); }
+        case '>' : if (ptr[1]=='=') { ++ptr; __eval_op(val1>=val2); } else { __eval_op(val1>val2); }
+        case '<' : if (ptr[1]=='=') { ++ptr; __eval_op(val1<=val2); } else { __eval_op(val1<val2); }
+        case ';' : __eval_op(val2);
+        case '^' : __eval_op(std::pow(val1,val2));
+        case '=' : if (*++ptr=='=') { __eval_op(val1==val2); } else return false;
+        case '!' : if (*++ptr=='=') { __eval_op(val1!=val2); } else return false;
         }
-      } else if ((c=='+' || c=='-' || c=='!') && // +Value, -Value or !Value
-                 (((sep = expression[1])>='0' && sep<='9') || sep=='.')) {
-        if (!expression[2]) { // [+-!] + Single digit
-          const int ival = sep - '0';
-          res = (t)(c=='+'?ival:c=='-'?-ival:!ival);
-          is_success = true;
-        } else if ((err = std::sscanf(expression + 1,"%lf %c%lf %c",&val,&sep,&val2,&end))==1) { // [+-!] Single value
-          res = (t)(c=='+'?val:c=='-'?-val:(double)!val);
-          is_success = true;
-        } else if (err==3) { // [+-!] Value1 Operator Value2
-          const double val1 = c=='+'?val:c=='-'?-val:(double)!val;
-          switch (sep) {
-          case '+' : res = (t)(val1 + val2); is_success = true; break;
-          case '-' : res = (t)(val1 - val2); is_success = true; break;
-          case '*' : res = (t)(val1*val2); is_success = true; break;
-          case '/' : res = (t)(val1/val2); is_success = true; break;
-          case '%' : res = (t)cimg::mod(val1,val2); is_success = true; break;
-          case '&' : res = (t)((long)val1 & (long)val2); is_success = true; break;
-          case '|' : res = (t)((long)val1 | (long)val2); is_success = true; break;
-          case '>' : res = (t)(val1>val2); is_success = true; break;
-          case '<' : res = (t)(val1<val2); is_success = true; break;
-          case ';' : res = (t)val2; is_success = true; break;
-          case '^' : val = std::pow(val,val2); res = (t)(c=='+'?val:c=='-'?-val:!val); is_success = true; break;
-          }
-        }
-      } else if (!expression[1]) switch (*expression) { // Other common single-char expressions
-        case 'w' : res = (t)_width; is_success = true; break;
-        case 'h' : res = (t)_height; is_success = true; break;
-        case 'd' : res = (t)_depth; is_success = true; break;
-        case 's' : res = (t)_spectrum; is_success = true; break;
-        case 'r' : res = (t)_is_shared; is_success = true; break;
-        }
-      return is_success;
+      }
+      return false;
     }
 
     double _eval(CImg<T> *const img_output, const char *const expression,
