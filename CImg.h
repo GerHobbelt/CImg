@@ -54,7 +54,7 @@
 
 // Set version number of the library.
 #ifndef cimg_version
-#define cimg_version 320
+#define cimg_version 321
 
 /*-----------------------------------------------------------
  #
@@ -29654,7 +29654,7 @@ namespace cimg_library {
 #define __eval_op(op) if (__eval_get(++ptr,val2) && !*ptr) { res = (t)(op); return true; } else return false;
 
       double val1, val2;
-      if (!expression || !*expression) return false;
+      if (!expression || !*expression || *expression==';' || *expression=='[') return false;
       if (!expression[1]) switch (*expression) {
         case 'w' : res = (t)_width; return true;
         case 'h' : res = (t)_height; return true;
