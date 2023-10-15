@@ -2445,11 +2445,12 @@ namespace cimg_library {
     inline unsigned int openmp_mode(const unsigned int value, const bool is_set) {
 #if cimg_use_openmp!=0
       static unsigned int mode = 2;
-#else
-      static unsigned int mode = 0;
-#endif
       if (is_set)  { cimg::mutex(0); mode = value<2?value:2; cimg::mutex(0,0); }
       return mode;
+#else
+      cimg::unused(value,is_set);
+      return 0;
+#endif
     }
 
     //! Set current \CImg openmp mode.
@@ -32759,8 +32760,6 @@ namespace cimg_library {
                                                                   (M2>=2 || M1>=4096) && M1*M2>=32))
             is_parallelizable = true;
 
-          std::fprintf(stderr,"\nDEBUG : is_parallel = %d\n",(int)is_parallelizable);
-
           if (mp.result_dim) { // Vector-valued expression
             const unsigned int N = std::min(mp.result_dim,_spectrum);
             const ulongT whd = (ulongT)_width*_height*_depth;
@@ -54441,13 +54440,25 @@ namespace cimg_library {
         nb_colors = header[0x2E] + (header[0x2F]<<8) + (header[0x30]<<16) + (header[0x31]<<24),
         bpp = header[0x1C] + (header[0x1D]<<8);
 
-      if (!file_size || file_size==offset) {
-        cimg::fseek(nfile,0,SEEK_END);
-        file_size = (int)cimg::ftell(nfile);
-        cimg::fseek(nfile,54,SEEK_SET);
-      }
-      if (header_size>40) cimg::fseek(nfile,header_size - 40,SEEK_CUR);
+      if ((ulongT)file_size!=fsiz)
+        throw CImgIOException(_cimg_instance
+                              "load_bmp(): Invalid file_size %d specified in filename '%s' (expected %lu).",
+                              cimg_instance,
+                              file_size,filename?filename:"(FILE*)",fsiz);
 
+      if (header_size<0 || header_size>=file_size)
+        throw CImgIOException(_cimg_instance
+                              "load_bmp(): Invalid header size %d specified in filename '%s'.",
+                              cimg_instance,
+                              header_size,filename?filename:"(FILE*)");
+
+      if (offset<0 || offset>=file_size)
+        throw CImgIOException(_cimg_instance
+                              "load_bmp(): Invalid offset %d specified in filename '%s'.",
+                              cimg_instance,
+                              offset,filename?filename:"(FILE*)");
+
+      if (header_size>40) cimg::fseek(nfile,header_size - 40,SEEK_CUR);
       const int
         dx_bytes = (bpp==1)?(dx/8 + (dx%8?1:0)):((bpp==4)?(dx/2 + (dx%2)):(int)((longT)dx*bpp/8)),
         align_bytes = (4 - dx_bytes%4)%4;
@@ -54455,18 +54466,24 @@ namespace cimg_library {
         cimg_iobuffer = (ulongT)24*1024*1024,
         buf_size = (ulongT)cimg::abs(dy)*(dx_bytes + align_bytes);
 
-      if (buf_size>fsiz)
-          throw CImgIOException(_cimg_instance
-                                "load_bmp(): File size %lu for filename '%s' does not match "
-                                "encoded image dimensions (%d,%d).",
-                                cimg_instance,
-                                (long)fsiz,filename?filename:"(FILE*)",dx,dy);
+      if (buf_size>=fsiz)
+        throw CImgIOException(_cimg_instance
+                              "load_bmp(): File size %lu for filename '%s' does not match "
+                              "encoded image dimensions (%d,%d).",
+                              cimg_instance,
+                              (long)fsiz,filename?filename:"(FILE*)",dx,dy);
 
       CImg<intT> colormap;
       if (bpp<16) { if (!nb_colors) nb_colors = 1<<bpp; } else nb_colors = 0;
       if (nb_colors) { colormap.assign(nb_colors); cimg::fread(colormap._data,nb_colors,nfile); }
+
       const int xoffset = offset - 14 - header_size - 4*nb_colors;
-      if (xoffset>0) cimg::fseek(nfile,xoffset,SEEK_CUR);
+      if (xoffset<0 || xoffset>=file_size)
+        throw CImgIOException(_cimg_instance
+                              "load_bmp(): Malformed header in filename '%s'.",
+                              cimg_instance,
+                              filename?filename:"(FILE*)");
+      cimg::fseek(nfile,xoffset,SEEK_CUR);
 
       CImg<ucharT> buffer;
       if (buf_size<cimg_iobuffer) {
