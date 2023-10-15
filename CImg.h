@@ -27157,7 +27157,7 @@ namespace cimg_library {
       }
 
       static double mp_repeat(_cimg_math_parser& mp) {
-        const double nb_it = _mp_arg(2);
+        const double nb_it = _mp_arg(2), nb_itm1 = nb_it - 1;
         double
           *const ptrc = mp.opcode[3]!=~0U?&_mp_arg(3):0,
           *const ptrs = &_mp_arg(1);
@@ -27165,13 +27165,13 @@ namespace cimg_library {
           *const p_body = ++mp.p_code,
           *const p_end = p_body + mp.opcode[4];
 
-        if (nb_it>0) {
+        if (nb_it>=1) {
           const unsigned int _break_type = mp.break_type;
           mp.break_type = 0;
 
           double it = 0;
           if (ptrc) { // Version with loop variable (3 arguments)
-            while (it<nb_it) {
+            while (it<=nb_itm1) {
               *ptrc = it;
               for (mp.p_code = p_body; mp.p_code<p_end; ++mp.p_code) {
                 mp.opcode._data = mp.p_code->_data;
@@ -27183,7 +27183,7 @@ namespace cimg_library {
             }
             *ptrc = it;
           } else // Version without loop variable (2 arguments)
-            while (it<nb_it) {
+            while (it<=nb_itm1) {
               for (mp.p_code = p_body; mp.p_code<p_end; ++mp.p_code) {
                 mp.opcode._data = mp.p_code->_data;
                 const ulongT target = mp.opcode[1];
@@ -47456,24 +47456,22 @@ namespace cimg_library {
       if (is_empty() || !opacity || !pattern ||
           std::min(y0,y1)>=height() || std::max(y0,y1)<0 ||
           std::min(x0,x1)>=width() || std::max(x0,x1)<0) return *this;
-
       int
         w1 = width() - 1, h1 = height() - 1,
         dx01 = x1 - x0, dy01 = y1 - y0;
 
       const bool is_horizontal = cimg::abs(dx01)>cimg::abs(dy01);
       if (is_horizontal) cimg::swap(x0,y0,x1,y1,w1,h1,dx01,dy01);
-      if (pattern==~0U && y0>y1) {
-        cimg::swap(x0,x1,y0,y1);
-        dx01*=-1; dy01*=-1;
-      }
+      if (pattern==~0U && y0>y1) { cimg::swap(x0,x1,y0,y1); dx01*=-1; dy01*=-1; }
 
       static unsigned int hatch = ~0U - (~0U>>1);
       if (init_hatch) hatch = ~0U - (~0U>>1);
       cimg_init_scanline(opacity);
       const int
-        step = y0<=y1?1:-1,hdy01 = dy01*cimg::sign(dx01)/2,
-        cy0 = cimg::cut(y0,0,h1), cy1 = cimg::cut(y1,0,h1) + step;
+        step = y0<=y1?1:-1,
+        hdy01 = dy01*cimg::sign(dx01)/2,
+        cy0 = cimg::cut(y0,0,h1),
+        cy1 = cimg::cut(y1,0,h1) + step;
       dy01+=dy01?0:1;
 
       for (int y = cy0; y!=cy1; y+=step) {
@@ -47848,29 +47846,32 @@ namespace cimg_library {
        - This function uses several call to the single CImg::draw_line() procedure,
        depending on the vectors size in \p points.
     **/
-    template<typename t, typename tc>
-    CImg<T>& draw_line(const CImg<t>& points,
+    template<typename tp, typename tc>
+    CImg<T>& draw_line(const CImg<tp>& points,
                        const tc *const color, const float opacity=1,
                        const unsigned int pattern=~0U, const bool init_hatch=true) {
-      if (is_empty() || !points || points._width<2) return *this;
-      bool ninit_hatch = init_hatch;
-      switch (points._height) {
-      case 0 : case 1 :
+      if (is_empty() || !points) return *this;
+      if (!color)
         throw CImgArgumentException(_cimg_instance
-                                    "draw_line(): Invalid specified point set (%u,%u,%u,%u,%p).",
+                                    "draw_line(): Specified color is (null).",
+                                    cimg_instance);
+      if (points.height()!=2)
+        throw CImgArgumentException(_cimg_instance
+                                    "draw_line(): Invalid specified point set (%u,%u,%u,%u).",
                                     cimg_instance,
-                                    points._width,points._height,points._depth,points._spectrum,points._data);
+                                    points._width,points._height,points._depth,points._spectrum);
+      CImg<intT> ipoints;
+      if (cimg::type<tp>::is_float()) ipoints = points.get_round();
+      else ipoints.assign(points,cimg::type<tp>::string()==cimg::type<int>::string());
 
-      default : {
-        const int x0 = (int)points(0,0), y0 = (int)points(0,1);
-        int ox = x0, oy = y0;
-        for (unsigned int i = 1; i<points._width; ++i) {
-          const int x = (int)points(i,0), y = (int)points(i,1);
-          draw_line(ox,oy,x,y,color,opacity,pattern,ninit_hatch);
-          ninit_hatch = false;
-          ox = x; oy = y;
-        }
-      }
+      bool ninit_hatch = init_hatch;
+      const int x0 = ipoints(0,0), y0 = ipoints(0,1);
+      int ox = x0, oy = y0;
+      for (unsigned int i = 1; i<ipoints._width; ++i) {
+        const int x = ipoints(i,0), y = ipoints(i,1);
+        draw_line(ox,oy,x,y,color,opacity,pattern,ninit_hatch);
+        ninit_hatch = false;
+        ox = x; oy = y;
       }
       return *this;
     }
@@ -49851,22 +49852,18 @@ namespace cimg_library {
 
       while (go_on) {
         unsigned int an = (nn + 1)%ipoints._width;
-        const int
-          x0 = ipoints(n,0),
-          y0 = ipoints(n,1);
+        const int x0 = ipoints(n,0), y0 = ipoints(n,1);
         if (ipoints(nn,1)==y0) while (ipoints(an,1)==y0) { nn = an; (an+=1)%=ipoints._width; }
-        const int
-          x1 = ipoints(nn,0),
-          y1 = ipoints(nn,1);
+        const int x1 = ipoints(nn,0), y1 = ipoints(nn,1);
         unsigned int tn = an;
         while (ipoints(tn,1)==y1) (tn+=1)%=ipoints._width;
-
         if (y0!=y1) {
           const int
             y2 = ipoints(tn,1),
             x01 = x1 - x0, y01 = y1 - y0, y12 = y2 - y1,
             step = cimg::sign(y01),
-            tmax = std::max(1,cimg::abs(y01)), htmax = tmax*cimg::sign(x01)/2,
+            tmax = std::max(1,cimg::abs(y01)),
+            htmax = tmax*cimg::sign(x01)/2,
             tend = tmax - (step==cimg::sign(y12));
           unsigned int y = (unsigned int)y0 - ymin;
           for (int t = 0; t<=tend; ++t, y+=step)
@@ -49878,7 +49875,7 @@ namespace cimg_library {
       }
 
       cimg_pragma_openmp(parallel for cimg_openmp_if(Xs._height>=(cimg_openmp_sizefactor)*512))
-      cimg_forY(Xs,y) { // if (count[y]) {
+      cimg_forY(Xs,y) {
         const CImg<intT> Xsy = Xs.get_shared_points(0,count[y] - 1,y).sort();
         int px = width();
         for (unsigned int k = 0; k<Xsy._width; k+=2) {
@@ -49901,6 +49898,11 @@ namespace cimg_library {
         throw CImgArgumentException(_cimg_instance
                                     "draw_polygon(): Specified color is (null).",
                                     cimg_instance);
+      if (points.height()!=2)
+        throw CImgArgumentException(_cimg_instance
+                                    "draw_polygon(): Invalid specified point set (%u,%u,%u,%u).",
+                                    cimg_instance,
+                                    points._width,points._height,points._depth,points._spectrum);
       CImg<intT> ipoints;
       if (cimg::type<tp>::is_float()) ipoints = points.get_round();
       else ipoints.assign(points,cimg::type<tp>::string()==cimg::type<int>::string());
@@ -49908,32 +49910,18 @@ namespace cimg_library {
       if (ipoints._width==1) return draw_point(ipoints(0,0),ipoints(0,1),color,opacity);
       if (ipoints._width==2) return draw_line(ipoints(0,0),ipoints(0,1),ipoints(1,0),ipoints(1,1),
                                               color,opacity,pattern);
+      if (ipoints._width==3) return draw_triangle(ipoints(0,0),ipoints(0,1),ipoints(1,0),ipoints(1,1),
+                                                  ipoints(2,0),ipoints(2,1),color,opacity,pattern);
       bool ninit_hatch = true;
-      switch (ipoints._height) {
-      case 0 : case 1 :
-        throw CImgArgumentException(_cimg_instance
-                                    "draw_polygon(): Invalid specified point set (%u,%u,%u,%u).",
-                                    cimg_instance,
-                                    ipoints._width,ipoints._height,ipoints._depth,ipoints._spectrum);
-      default : {
-        CImg<intT> npoints(ipoints._width,2);
-        int x = npoints(0,0) = ipoints(0,0), y = npoints(0,1) = ipoints(0,1);
-        unsigned int nb_points = 1;
-        for (unsigned int p = 1; p<ipoints._width; ++p) {
-          const int nx = ipoints(p,0), ny = ipoints(p,1);
-          if (nx!=x || ny!=y) { npoints(nb_points,0) = nx; npoints(nb_points++,1) = ny; x = nx; y = ny; }
-        }
-        const int x0 = npoints(0,0), y0 = npoints(0,1);
-        int ox = x0, oy = y0;
-        for (unsigned int i = 1; i<nb_points; ++i) {
-          const int _x = npoints(i,0), _y = npoints(i,1);
-          draw_line(ox,oy,_x,_y,color,opacity,pattern,ninit_hatch);
-          ninit_hatch = false;
-          ox = _x; oy = _y;
-        }
-        draw_line(ox,oy,x0,y0,color,opacity,pattern,false);
+      const int x0 = ipoints(0,0), y0 = ipoints(0,1);
+      int ox = x0, oy = y0;
+      for (unsigned int i = 1; i<ipoints._width; ++i) {
+        const int x = ipoints(i,0), y = ipoints(i,1);
+        draw_line(ox,oy,x,y,color,opacity,pattern,ninit_hatch);
+        ninit_hatch = false;
+        ox = x; oy = y;
       }
-      }
+      draw_line(ox,oy,x0,y0,color,opacity,pattern,false);
       return *this;
     }
 
