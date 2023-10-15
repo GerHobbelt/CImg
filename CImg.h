@@ -19446,6 +19446,7 @@ namespace cimg_library {
             if (!std::strncmp(ss,"crop(",5)) { // Image or vector crop
               _cimg_mp_op("Function 'crop()'");
               is_sth = false; // is image crop ?
+              arg1 = 0;
               if (*ss5=='#') { // Index specified
                 s0 = ss6; while (s0<se1 && (*s0!=',' || level[s0 - expr._data]!=clevel1)) ++s0;
                 p1 = compile(ss6,s0++,depth1,0,block_flags);
@@ -20639,6 +20640,16 @@ namespace cimg_library {
             break;
 
           case 'g' :
+#if cimg_use_cpp11==1
+            if (!std::strncmp(ss,"gamma(",6)) { // Gamma
+              _cimg_mp_op("Function 'gamma()'");
+              arg1 = compile(ss6,se1,depth1,0,block_flags);
+              if (_cimg_mp_is_vector(arg1)) _cimg_mp_vector1_v(mp_gamma,arg1);
+              if (_cimg_mp_is_const_scalar(arg1)) _cimg_mp_const_scalar(std::tgamma(mem[arg1]));
+              _cimg_mp_scalar1(mp_gamma,arg1);
+            }
+#endif
+
             if (!std::strncmp(ss,"gauss(",6)) { // Gaussian function
               _cimg_mp_op("Function 'gauss()'");
               s1 = ss6; while (s1<se1 && (*s1!=',' || level[s1 - expr._data]!=clevel1)) ++s1;
@@ -24967,6 +24978,12 @@ namespace cimg_library {
         cimg::unused(mp);
         return cimg::grand(&mp.rng);
       }
+
+#if cimg_use_cpp11==1
+      static double mp_gamma(_cimg_math_parser& mp) {
+        return std::tgamma(_mp_arg(2));
+      }
+#endif
 
       static double mp_gauss(_cimg_math_parser& mp) {
         const double x = _mp_arg(2), s = _mp_arg(3);
@@ -50250,7 +50267,7 @@ namespace cimg_library {
               const unsigned int cmin = std::min(_spectrum,letter._spectrum);
               if (foreground_color)
                 for (unsigned int c = 0; c<cmin; ++c)
-                  if (foreground_color[c]!=1) letter.get_shared_channel(c)*=foreground_color[c]/255;
+                  if (foreground_color[c]!=255) letter.get_shared_channel(c)*=foreground_color[c]/255.0;
               if (mask) { // Letter has mask
                 if (background_color)
                   for (unsigned int c = 0; c<cmin; ++c)
@@ -53545,7 +53562,7 @@ namespace cimg_library {
               unsigned int len = (unsigned int)std::strlen(message);
               cimg_forC(*this,c)
                 cimg_snprintf(message._data + len,message._width - len,"%g ",(double)(*this)(x,0,0,c));
-              len = std::strlen(message);
+              len = (unsigned int)std::strlen(message);
               cimg_snprintf(message._data + len,message._width - len,")");
             }
             if (x0>=0 && x1>=0) {
