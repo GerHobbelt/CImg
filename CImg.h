@@ -54,7 +54,7 @@
 
 // Set version number of the library.
 #ifndef cimg_version
-#define cimg_version 323
+#define cimg_version 324
 
 /*-----------------------------------------------------------
  #
@@ -6983,7 +6983,7 @@ namespace cimg_library {
     //! Ellipsize a string.
     /**
        \param str C-string.
-       \param l Max number of characters.
+       \param l Max number of printed characters.
        \param is_ending Tell if the dots are placed at the end or at the center of the ellipsized string.
     **/
     inline char *strellipsize(char *const str, const unsigned int l=64,
@@ -7005,7 +7005,7 @@ namespace cimg_library {
     /**
        \param str C-string.
        \param res output C-string.
-       \param l Max number of characters.
+       \param l Max number of printed characters. String 'res' must be a size of at least 'l+1'.
        \param is_ending Tell if the dots are placed at the end or at the center of the ellipsized string.
     **/
     inline char *strellipsize(const char *const str, char *const res, const unsigned int l=64,
