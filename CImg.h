@@ -54,7 +54,7 @@
 
 // Set version number of the library.
 #ifndef cimg_version
-#define cimg_version 322
+#define cimg_version 323
 
 /*-----------------------------------------------------------
  #
@@ -57405,7 +57405,7 @@ namespace cimg_library {
       else std::fprintf(cimg::output()," (%s) = [ ",_is_shared?"shared":"non-shared");
 
       if (!is_empty()) cimg_foroff(*this,off) {
-        std::fprintf(cimg::output(),"%g",(double)_data[off]);
+        std::fprintf(cimg::output(),cimg::type<T>::format_s(),cimg::type<T>::format(_data[off]));
         if (off!=siz1) std::fprintf(cimg::output(),"%s",off%_width==width1?" ; ":" ");
         if (off==7 && siz>16) { off = siz1 - 8; std::fprintf(cimg::output(),"... "); }
       }
