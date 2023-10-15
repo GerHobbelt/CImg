@@ -21448,11 +21448,11 @@ namespace cimg_library {
 
             if (!std::strncmp(ss,"norm",4) && ss4<se1 && (s = std::strchr(ss4,'('))!=0) { // Lp norm (variant)
               _cimg_mp_op("Function 'norm()'");
-              arg1 = s++!=ss4?compile(ss4,s,depth1,0,block_flags):2;
+              arg1 = s!=ss4?compile(ss4,s,depth1,0,block_flags):2;
               _cimg_mp_check_const_scalar(arg1,0,0);
               is_sth = true; // Tell if all arguments are constant
               CImg<ulongT>::vector((ulongT)mp_vector_norm,0,0,arg1).move_to(l_opcode);
-              for ( ; s<se; ++s) {
+              for (++s; s<se; ++s) {
                 ns = s; while (ns<se && (*ns!=',' || level[ns - expr._data]!=clevel1) &&
                                (*ns!=')' || level[ns - expr._data]!=clevel)) ++ns;
                 arg2 = compile(s,ns,depth1,0,block_flags);
@@ -30430,7 +30430,7 @@ namespace cimg_library {
     /**
        If the instance matrix is not square, the Moore-Penrose pseudo-inverse is computed instead.
        \param use_LU Choose the inverting algorithm. Can be:
-       - \c true: LU solver (faster but less precise).
+       - \c true: LU solver (faster but sometimes less precise).
        - \c false: SVD solver (more precise but slower).
        \param lambda is used only in the Moore-Penrose pseudoinverse for estimating A^t.(A^t.A + lambda.Id)^-1.
     **/
@@ -49876,7 +49876,7 @@ namespace cimg_library {
       }
 
       cimg_pragma_openmp(parallel for cimg_openmp_if(Xs._height>=(cimg_openmp_sizefactor)*512))
-      cimg_forY(Xs,y) {
+      cimg_forY(Xs,y) if (count[y]) {
         const CImg<intT> Xsy = Xs.get_shared_points(0,count[y] - 1,y).sort();
         int px = width();
         for (unsigned int k = 0; k<Xsy._width; k+=2) {
