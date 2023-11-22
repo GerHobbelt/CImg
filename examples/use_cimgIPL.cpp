@@ -45,10 +45,10 @@
 #include <highgui.h>
 #include <math.h>
 
-#pragma comment(lib, "cv.lib")
-#pragma comment(lib, "cvaux.lib")
-#pragma comment(lib, "cxcore.lib")
-#pragma comment(lib, "highgui.lib")
+//#pragma comment(lib, "cv.lib")
+//#pragma comment(lib, "cvaux.lib")
+//#pragma comment(lib, "cxcore.lib")
+//#pragma comment(lib, "highgui.lib")
 
 #define cimg_plugin1 "plugins\cimgIPL.h"
 #include "CImg.h"
