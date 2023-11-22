@@ -19995,11 +19995,13 @@ namespace cimg_library {
             }
 
             if (!std::strncmp(ss,"da_back(",8) ||
-                !std::strncmp(ss,"da_pop(",7)) { // Get latest element in a dynamic array
+                !std::strncmp(ss,"da_pop(",7) ||
+                !std::strncmp(ss,"da_pop_heap(",12)) { // Get latest element in a dynamic array
               if (!is_inside_critical) is_parallelizable = false;
-              const bool is_pop = *ss3=='p';
-              _cimg_mp_op(is_pop?"Function 'da_pop()'":"Function 'da_back()'");
-              s0 = ss + (is_pop?7:8);
+              const bool is_pop = *ss3=='p', is_pop_heap = *ss6=='_';
+              _cimg_mp_op(is_pop_heap?"Function 'da_pop_heap()":
+                          is_pop?"Function 'da_pop()'":"Function 'da_back()'");
+              s0 = ss + (is_pop_heap?12:is_pop?7:8);
               if (*s0=='#') { // Index specified
                 s1 = ++s0; while (s1<se1 && (*s1!=',' || level[s1 - expr._data]!=clevel1)) ++s1;
                 p1 = compile(s0,s1++,depth1,0,block_flags);
@@ -20010,17 +20012,19 @@ namespace cimg_library {
               p3 = (unsigned int)cimg::mod((int)mem[p1],imglist.width());
               p2 = imglist[p3]._spectrum;
               if (p2>1) pos = vector(p2); else pos = scalar(); // Return vector or scalar result
-              CImg<ulongT>::vector((ulongT)mp_da_back_or_pop,pos,p2,p1,is_pop).move_to(code);
+              CImg<ulongT>::vector((ulongT)mp_da_back_or_pop,pos,p2,p1,is_pop_heap?2:is_pop?1:0).move_to(code);
               return_new_comp = true;
               _cimg_mp_return(pos);
             }
 
             if (!std::strncmp(ss,"da_insert(",10) ||
-                !std::strncmp(ss,"da_push(",8)) { // Insert element(s) in a dynamic array
+                !std::strncmp(ss,"da_push(",8) ||
+                !std::strncmp(ss,"da_push_heap(",13)) { // Insert element(s) in a dynamic array
               if (!is_inside_critical) is_parallelizable = false;
-              const bool is_push = *ss3=='p';
-              _cimg_mp_op(is_push?"Function 'da_push()'":"Function 'da_insert()'");
-              s0 = ss + (is_push?8:10);
+              const bool is_push = *ss3=='p', is_push_heap = *ss7=='_';
+              _cimg_mp_op(is_push_heap?"Function 'da_push_heap()'":
+                          is_push?"Function 'da_push()'":"Function 'da_insert()'");
+              s0 = ss + (is_push_heap?13:is_push?8:10);
               if (*s0=='#') { // Index specified
                 s1 = ++s0; while (s1<se1 && (*s1!=',' || level[s1 - expr._data]!=clevel1)) ++s1;
                 p1 = compile(s0,s1++,depth1,0,block_flags);
@@ -20031,7 +20035,8 @@ namespace cimg_library {
               if (!is_push) {
                 s0 = s1; while (s1<se1 && (*s1!=',' || level[s1 - expr._data]!=clevel1)) ++s1;
                 arg1 = compile(s0,s1++,depth1,0,block_flags); // Position
-              } else arg1 = ~0U;
+              } else if (is_push_heap) arg1 = ~0U - 1;
+              else arg1 = ~0U;
 
               CImg<ulongT>::vector((ulongT)mp_da_insert_or_push,_cimg_mp_slot_nan,p1,arg1,0,0).move_to(l_opcode);
               p3 = p1==~0U?2:3;
@@ -24583,15 +24588,15 @@ namespace cimg_library {
       }
 
       static double mp_da_back_or_pop(_cimg_math_parser& mp) {
-        const bool is_pop = (bool)mp.opcode[4];
-        const char *const s_op = is_pop?"da_pop":"da_back";
+        const bool is_pop_heap = mp.opcode[4]==2, is_pop = (bool)mp.opcode[4];
+        const char *const s_op = is_pop_heap?"da_pop_heap":is_pop?"da_pop":"da_back";
         mp_check_list(mp,s_op);
         const unsigned int
           dim = (unsigned int)mp.opcode[2],
           ind = (unsigned int)cimg::mod((int)_mp_arg(3),mp.imglist.width());
         double *const ptrd = &_mp_arg(1) + (dim>1?1:0);
         CImg<T> &img = mp.imglist[ind];
-        int siz = img?(int)img[img._height - 1]:0;
+        int siz = img?(int)cimg::float2uint((float)img[img._height - 1]):0;
         if (img && (img._width!=1 || img._depth!=1 || siz<0 || siz>img.height() - 1))
           throw CImgArgumentException("[" cimg_appname "_math_parser] CImg<%s>: Function '%s()': "
                                       "Specified image #%u of size (%d,%d,%d,%d) cannot be used as dynamic array%s.",
@@ -24602,15 +24607,41 @@ namespace cimg_library {
           throw CImgArgumentException("[" cimg_appname "_math_parser] CImg<%s>: Function '%s()': "
                                       "Specified dynamic array #%u contains no elements.",
                                       mp.imgout.pixel_type(),s_op,ind);
+        const int siz1 = siz - 1;
+        if (is_pop_heap) { // Heapify-down
+          if (dim==1) cimg::swap(img[0],img[siz1]);
+          else {
+            T *ptr0 = img.data(), *ptr1 = img.data(0,siz1);
+            cimg_forC(img,c) { cimg::swap(*ptr0,*ptr1); ptr0+=img._height; ptr1+=img._height; }
+          }
+          int index = 0;
+          while (true) {
+            const int child_left = 2*index + 1, child_right = child_left + 1;
+            int smallest = index;
+            if (child_left<siz1 && img[child_left]<img[smallest]) smallest = child_left;
+            if (child_right<siz1 && img[child_right]<img[smallest]) smallest = child_right;
+            if (smallest!=index) {
+              if (dim==1) cimg::swap(img[index],img[smallest]);
+              else {
+                T *ptr0 = img.data(0,index), *ptr1 = img.data(0,smallest);
+                cimg_forC(img,c) { cimg::swap(*ptr0,*ptr1); ptr0+=img._height; ptr1+=img._height; }
+              }
+              index = smallest;
+            } else break;
+          }
+        }
 
         double ret = cimg::type<double>::nan();
-        if (dim==1) ret = img[siz - 1]; // Scalar element
-        else cimg_forC(img,c) ptrd[c] = img(0,siz - 1,0,c); // Vector element
+        if (dim==1) ret = img[siz1]; // Scalar element
+        else {
+          const T *ptrs = img.data(0,siz1);
+          cimg_forC(img,c) { ptrd[c] = *ptrs; ptrs+=img._height; } // Vector element
+        }
         if (is_pop) { // Remove element from array
           --siz;
-          if (img.height()>32 && siz<2*img.height()/3) // Reduce size of dynamic array
+          if (img.height()>32 && siz<img.height()/8) // Reduce size of dynamic array
             img.resize(1,std::max(2*siz + 1,32),1,-100,0);
-          img[img._height - 1] = (T)siz;
+          img[img._height - 1] = (T)cimg::uint2float(siz);
         }
         return ret;
       }
@@ -24632,7 +24663,8 @@ namespace cimg_library {
       }
 
       static double mp_da_insert_or_push(_cimg_math_parser& mp) {
-        const char *const s_op = mp.opcode[3]==~0U?"da_push":"da_insert";
+        const bool is_push_heap = mp.opcode[3]==~0U - 1, is_push = mp.opcode[3]>=~0U - 1;
+        const char *const s_op = is_push_heap?"da_push_heap":is_push?"da_push":"da_insert";
         mp_check_list(mp,s_op);
         const unsigned int
           dim = (unsigned int)mp.opcode[4],
@@ -24642,7 +24674,7 @@ namespace cimg_library {
         CImg<T> &img = mp.imglist[ind];
         const int
           siz = img?(int)cimg::float2uint((float)img[img._height - 1]):0,
-          pos0 = mp.opcode[3]==~0U?siz:(int)_mp_arg(3),
+          pos0 = is_push?siz:(int)_mp_arg(3),
           pos = pos0<0?pos0 + siz:pos0;
 
         if (img && _dim!=img._spectrum)
@@ -24667,11 +24699,32 @@ namespace cimg_library {
           cimg_forC(img,c) std::memmove(img.data(0,pos + nb_elts,0,c),img.data(0,pos,0,c),(siz - pos)*sizeof(T));
 
         if (!dim) // Scalar or vector1() elements
-          for (unsigned int k = 0; k<nb_elts; ++k) img[pos + k] = (T)_mp_arg(6 + k);
+          for (unsigned int k = 0; k<nb_elts; ++k) {
+            int index = pos + k;
+            img[index] = (T)_mp_arg(6 + k);
+            if (is_push_heap) while (index>0) { // Heapify-up
+                const int index_parent = (index - 1)/2;
+                if (img[index]<img[index_parent]) {
+                  cimg::swap(img[index],img[index_parent]);
+                  index = index_parent; }
+                else break;
+              }
+          }
         else // vectorN() elements, with N>1
           for (unsigned int k = 0; k<nb_elts; ++k) {
-            double *ptrs = &_mp_arg(6 + k) + 1;
-            cimg_forC(img,c) img(0,pos + k,0,c) = ptrs[c];
+            int index = pos + k;
+            const double *const ptrs = &_mp_arg(6 + k) + 1;
+            T *ptrd = img.data(0,index);
+            cimg_forC(img,c) { *ptrd = ptrs[c]; ptrd+=img._height; }
+            if (is_push_heap) while (index>0) { // Heapify-up
+                const int index_parent = (index - 1)/2;
+                if (img[index]<img[index_parent]) {
+                  T *ptr0 = img.data(0,index), *ptr1 = img.data(0,index_parent);
+                  cimg_forC(img,c) { cimg::swap(*ptr0,*ptr1); ptr0+=img._height; ptr1+=img._height; }
+                  index = index_parent;
+                }
+                else break;
+              }
           }
         img[img._height - 1] = (T)cimg::uint2float(siz + nb_elts);
         return cimg::type<double>::nan();
@@ -24696,7 +24749,7 @@ namespace cimg_library {
           start0 = mp.opcode[3]==~0U?siz - 1:_mp_arg(3),
           end0 = mp.opcode[4]==~0U?start0:_mp_arg(4),
           start = start0<0?start0 + siz:start0,
-                         end = end0<0?end0 + siz:end0;
+          end = end0<0?end0 + siz:end0;
         if (start<0 || start>=siz || end<0 || end>=siz || start>end)
           throw CImgArgumentException("[" cimg_appname "_math_parser] CImg<%s>: Function 'da_remove()': "
                                       "Invalid starting (%d) and ending (%d) positions "
@@ -24705,7 +24758,7 @@ namespace cimg_library {
         if (end<siz - 1) // Move remaining data in dynamic array
           cimg_forC(img,c) std::memmove(img.data(0,start,0,c),img.data(0,end + 1,0,c),(siz - 1 - end)*sizeof(T));
         siz-=end - start + 1;
-        if (img.height()>32 && siz<2*img.height()/3) // Reduce size of dynamic array
+        if (img.height()>32 && siz<img.height()/8) // Reduce size of dynamic array
           img.resize(1,std::max(2*siz + 1,32),1,-100,0);
         img[img._height - 1] = (T)cimg::uint2float(siz);
         return cimg::type<double>::nan();
