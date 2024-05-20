@@ -54,7 +54,7 @@
 
 // Set version number of the library.
 #ifndef cimg_version
-#define cimg_version 336
+#define cimg_version 337
 
 /*-----------------------------------------------------------
  #
@@ -48838,8 +48838,8 @@ namespace cimg_library {
         if (fx>=0 && fx<=w1 && pattern&hatch) {
           const int
             x = (int)(fx + 0.5f),
-            tx = (int)(ftx + 0.5f),
-            ty = (int)(fty + 0.5f);
+            tx = (int)ftx,
+            ty = (int)fty;
           T *const ptrd = is_horizontal?data(y,x):data(x,y);
           const tc *const color = &texture._atXY(tx,ty);
           cimg_forC(*this,c) {
@@ -48927,8 +48927,8 @@ namespace cimg_library {
         if (fx>=0 && fx<=w1 && pattern&hatch) {
           const int
             x = (int)(fx + 0.5f),
-            tx = (int)(ftxz/iz + 0.5f),
-            ty = (int)(ftyz/iz + 0.5f);
+            tx = (int)(ftxz/iz),
+            ty = (int)(ftyz/iz);
           T *const ptrd = is_horizontal?data(y,x):data(x,y);
           const tc *const color = &texture._atXY(tx,ty);
           cimg_forC(*this,c) {
@@ -49028,8 +49028,8 @@ namespace cimg_library {
           if (iz>=*ptrz) {
             *ptrz = (tz)iz;
             const int
-              tx = (int)(ftxz/iz + 0.5f),
-              ty = (int)(ftyz/iz + 0.5f);
+              tx = (int)(ftxz/iz),
+              ty = (int)(ftyz/iz);
             T *const ptrd = is_horizontal?data(y,x):data(x,y);
             const tc *const color = &texture._atXY(tx,ty);
             cimg_forC(*this,c) {
@@ -49941,8 +49941,8 @@ namespace cimg_library {
               txz = txzm + dtxzmM*xxm/dxmM,
               tyz = tyzm + dtyzmM*xxm/dxmM;
             const int
-              tx = (int)cimg::round(txz/iz),
-              ty = (int)cimg::round(tyz/iz);
+              tx = (int)(txz/iz),
+              ty = (int)(tyz/iz);
             const tc *const color = &texture._atXY(tx,ty);
             cimg_forC(*this,c) {
               const Tfloat val = cbs<=1?color[c*twhd]*cbs:(2 - cbs)*color[c*twhd] + (cbs - 1)*_sc_maxval;
@@ -50037,8 +50037,8 @@ namespace cimg_library {
                 txz = txzm + dtxzmM*xxm/dxmM,
                 tyz = tyzm + dtyzmM*xxm/dxmM;
               const int
-                tx = (int)cimg::round(txz/iz),
-                ty = (int)cimg::round(tyz/iz);
+                tx = (int)(txz/iz),
+                ty = (int)(tyz/iz);
               const tc *const color = &texture._atXY(tx,ty);
               cimg_forC(*this,c) {
                 const Tfloat val = cbs<=1?color[c*twhd]*cbs:(2 - cbs)*color[c*twhd] + (cbs - 1)*_sc_maxval;
@@ -50426,8 +50426,8 @@ namespace cimg_library {
               tyz = tyzm + dtyzmM*xxm/dxmM,
               cbs = cimg::cut(bsm + dbsmM*xxm/dxmM,0,2);
             const int
-              tx = (int)cimg::round(txz/iz),
-              ty = (int)cimg::round(tyz/iz);
+              tx = (int)(txz/iz),
+              ty = (int)(tyz/iz);
             const tc *const color = &texture._atXY(tx,ty);
             cimg_forC(*this,c) {
               const tc col = color[c*twhd];
@@ -50527,8 +50527,8 @@ namespace cimg_library {
                 tyz = tyzm + dtyzmM*xxm/dxmM,
                 cbs = cimg::cut(bsm + dbsmM*xxm/dxmM,0,2);
               const int
-                tx = (int)cimg::round(txz/iz),
-                ty = (int)cimg::round(tyz/iz);
+                tx = (int)(txz/iz),
+                ty = (int)(tyz/iz);
               const tc *const color = &texture._atXY(tx,ty);
               cimg_forC(*this,c) {
                 const tc col = color[c*twhd];
@@ -50762,10 +50762,10 @@ namespace cimg_library {
               lxz = lxzm + dlxzmM*xxm/dxmM,
               lyz = lyzm + dlyzmM*xxm/dxmM;
             const int
-              tx = (int)cimg::round(txz/iz),
-              ty = (int)cimg::round(tyz/iz),
-              lx = (int)cimg::round(lxz/iz),
-              ly = (int)cimg::round(lyz/iz);
+              tx = (int)(txz/iz),
+              ty = (int)(tyz/iz),
+              lx = (int)(lxz/iz),
+              ly = (int)(lyz/iz);
             const tc *const color = &texture._atXY(tx,ty);
             const tl *const lig = &light._atXY(lx,ly);
             cimg_forC(*this,c) {
@@ -50887,10 +50887,10 @@ namespace cimg_library {
                 lxz = lxzm + dlxzmM*xxm/dxmM,
                 lyz = lyzm + dlyzmM*xxm/dxmM;
               const int
-                tx = (int)cimg::round(txz/iz),
-                ty = (int)cimg::round(tyz/iz),
-                lx = (int)cimg::round(lxz/iz),
-                ly = (int)cimg::round(lyz/iz);
+                tx = (int)(txz/iz),
+                ty = (int)(tyz/iz),
+                lx = (int)(lxz/iz),
+                ly = (int)(lyz/iz);
               const tc *const color = &texture._atXY(tx,ty);
               const tl *const lig = &light._atXY(lx,ly);
               cimg_forC(*this,c) {
@@ -52447,53 +52447,55 @@ namespace cimg_library {
     **/
     CImg<T>& draw_plasma(const float alpha=1, const float beta=0, const unsigned int scale=8) {
       if (is_empty()) return *this;
-      const int w = width(), h = height();
-      const Tfloat m = (Tfloat)cimg::type<T>::min(), M = (Tfloat)cimg::type<T>::max();
+      const int
+        w0 = width(), h0 = height(),
+        delta = 1<<std::min(scale,12U),
+        w = cimg::round(w0,delta,1),
+        h = cimg::round(h0,delta,1);
       cimg_uint64 rng = (cimg::_rand(),cimg::rng());
+      CImg<T> canvas(w,h,depth(),spectrum());
+
       cimg_forZC(*this,z,c) {
-        CImg<T> ref = get_shared_slice(z,c);
-        for (int delta = 1<<std::min(scale,31U); delta>1; delta>>=1) {
-          const int delta2 = delta>>1;
-          const float r = alpha*delta + beta;
+        CImg<T> ref = canvas.get_shared_slice(z,c);
+
+        // Init step.
+        float r = alpha*delta + beta;
+        for (int yt = 0; yt<h; yt+=delta)
+          for (int xt = 0; xt<w; xt+=delta) {
+            const Tfloat val = r*cimg::rand(-1,1,&rng);
+            ref(xt,yt) = cimg::type<T>::cut(val);
+          }
+
+        for (int _delta = delta; _delta>1; _delta>>=1) {
+          const int _delta2 = _delta>>1;
+          r = alpha*_delta + beta;
 
           // Square step.
-          for (int y0 = 0; y0<h; y0+=delta)
-            for (int x0 = 0; x0<w; x0+=delta) {
-              const int x1 = (x0 + delta)%w, y1 = (y0 + delta)%h, xc = (x0 + delta2)%w, yc = (y0 + delta2)%h;
-              const Tfloat val = (Tfloat)(0.25f*(ref(x0,y0) + ref(x0,y1) + ref(x0,y1) + ref(x1,y1)) +
+          for (int yt = _delta2; yt<h; yt+=_delta)
+            for (int xt = _delta2; xt<w; xt+=_delta) {
+              const int x0 = xt - _delta2, y0 = yt - _delta2, x1 = (xt + _delta2)%w, y1 = (yt + _delta2)%h;
+              const Tfloat val = (Tfloat)(0.25f*(ref(x0,y0) + ref(x1,y0) + ref(x1,y1) + ref(x0,y1)) +
                                           r*cimg::rand(-1,1,&rng));
-              ref(xc,yc) = (T)(val<m?m:val>M?M:val);
+              ref(xt,yt) = cimg::type<T>::cut(val);
             }
 
           // Diamond steps.
-          for (int y = -delta2; y<h; y+=delta)
-            for (int x0=0; x0<w; x0+=delta) {
-              const int y0 = cimg::mod(y,h), x1 = (x0 + delta)%w, y1 = (y + delta)%h,
-                xc = (x0 + delta2)%w, yc = (y + delta2)%h;
-              const Tfloat val = (Tfloat)(0.25f*(ref(xc,y0) + ref(x0,yc) + ref(xc,y1) + ref(x1,yc)) +
+          bool is_odd_y = false;
+          for (int yt = 0; yt<h; yt+=_delta2) {
+            for (int xt = is_odd_y?0:_delta2; xt<w; xt+=_delta) {
+              const int
+                x0 = cimg::mod(xt - _delta2,w), x1 = (xt + _delta2)%w,
+                y0 = cimg::mod(yt - _delta2,h), y1 = (yt + _delta2)%h;
+              const Tfloat val = (Tfloat)(0.25f*(ref(x0,yt) + ref(x1,yt) + ref(xt,y0) + ref(xt,y1)) +
                                           r*cimg::rand(-1,1,&rng));
-              ref(xc,yc) = (T)(val<m?m:val>M?M:val);
+              ref(xt,yt) = cimg::type<T>::cut(val);
             }
-          for (int y0 = 0; y0<h; y0+=delta)
-            for (int x = -delta2; x<w; x+=delta) {
-              const int x0 = cimg::mod(x,w), x1 = (x + delta)%w, y1 = (y0 + delta)%h,
-                xc = (x + delta2)%w, yc = (y0 + delta2)%h;
-              const Tfloat val = (Tfloat)(0.25f*(ref(xc,y0) + ref(x0,yc) + ref(xc,y1) + ref(x1,yc)) +
-                                          r*cimg::rand(-1,1,&rng));
-              ref(xc,yc) = (T)(val<m?m:val>M?M:val);
-            }
-          for (int y = -delta2; y<h; y+=delta)
-            for (int x = -delta2; x<w; x+=delta) {
-              const int x0 = cimg::mod(x,w), y0 = cimg::mod(y,h), x1 = (x + delta)%w, y1 = (y + delta)%h,
-                xc = (x + delta2)%w, yc = (y + delta2)%h;
-              const Tfloat val = (Tfloat)(0.25f*(ref(xc,y0) + ref(x0,yc) + ref(xc,y1) + ref(x1,yc)) +
-                                          r*cimg::rand(-1,1,&rng));
-                ref(xc,yc) = (T)(val<m?m:val>M?M:val);
-            }
+            is_odd_y = !is_odd_y;
+          }
         }
       }
       cimg::srand(rng);
-      return *this;
+      return draw_image((w0 - w)/2,(h0 - h)/2,0,0,canvas);
     }
 
     //! Draw a quadratic Mandelbrot or Julia 2D fractal.
@@ -68283,6 +68285,7 @@ namespace cimg_library {
                       cimg::temporary_path(),cimg_file_separator,cimg::filenamerand(),ext._data);
         if ((file = cimg::std_fopen(filename_local,"rb"))!=0) cimg::fclose(file);
       } while (file);
+      file = 0;
 
 #ifdef cimg_use_curl
       const unsigned int omode = cimg::exception_mode();
@@ -68309,10 +68312,9 @@ namespace cimg_library {
           cimg::fseek(file,0,SEEK_END); // Check if file size is 0
           const cimg_ulong siz = cimg::ftell(file);
           cimg::fclose(file);
-          if (siz>0 && res==CURLE_OK) {
-            cimg::exception_mode(omode);
-            return filename_local;
-          } else std::remove(filename_local);
+          file = 0;
+          if (siz>0 && res==CURLE_OK) { cimg::exception_mode(omode); return filename_local; }
+          else std::remove(filename_local);
         }
       } catch (...) { }
       cimg::exception_mode(omode);
@@ -68371,7 +68373,6 @@ namespace cimg_library {
 #else
                                 "'wget' or 'curl'.",url);
 #endif
-        cimg::fclose(file);
 
         // Try gunzip it.
         cimg_snprintf(command,command._width,"%s.gz",filename_local);
