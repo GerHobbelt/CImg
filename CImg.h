@@ -1062,13 +1062,13 @@ extern "C" {
       ((_n1##x&3)==2?(img)._height - 1 - ++y:--x))))?0:1)
 
 #define cimg_for_lineXY(x,y,x0,y0,x1,y1) \
- for (int x = (int)(x0), y = (int)(y0), _sx = 1, _sy = 1, _steep = 0, \
+ for (int x = (int)(x0), y = (int)(y0), _sx = 1, _sy = 1, _slope = 0, \
       _dx=(x1)>(x0)?(int)(x1) - (int)(x0):(_sx=-1,(int)(x0) - (int)(x1)), \
       _dy=(y1)>(y0)?(int)(y1) - (int)(y0):(_sy=-1,(int)(y0) - (int)(y1)), \
       _counter = _dx, \
-      _err = _dx>_dy?(_dy>>1):((_steep=1),(_counter=_dy),(_dx>>1)); \
+      _err = _dx>_dy?(_dy>>1):((_slope=1),(_counter=_dy),(_dx>>1)); \
       _counter>=0; \
-      --_counter, x+=_steep? \
+      --_counter, x+=_slope? \
       (y+=_sy,(_err-=_dx)<0?_err+=_dy,_sx:0): \
       (y+=(_err-=_dy)<0?_err+=_dx,_sy:0,_sx))
 
@@ -22853,15 +22853,30 @@ namespace cimg_library {
                 s = s0;
               }
 
+              is_sth = !is_new_variable_assignment; // Can vector be defined once in 'begin()'?
               if (s<se1 || arg1==~0U) for ( ; s<se; ++s) {
                   ns = s; while (ns<se && (*ns!=',' || level[ns - expr._data]!=clevel1) &&
                                  (*ns!=')' || level[ns - expr._data]!=clevel)) ++ns;
+                  const CImgList<ulongT> &rcode = is_inside_begin?code:code_begin;
+                  p1 = rcode.size();
+                  p2 = variable_def.size();
                   arg3 = compile(s,ns,depth1,0,block_flags);
+                  p3 = rcode.size();
                   if (is_vector(arg3)) {
                     arg4 = size(arg3);
                     CImg<ulongT>::sequence(arg4,arg3 + 1,arg3 + arg4).move_to(l_opcode);
                     arg2+=arg4;
-                  } else { CImg<ulongT>::vector(arg3).move_to(l_opcode); ++arg2; }
+                    const CImg<ulongT> &rcode_back = rcode.back();
+                    is_sth&=p3>p1 && rcode_back[1]==arg3 &&
+                      (rcode_back[0]==(ulongT)mp_string_init ||
+                       rcode_back[0]==(ulongT)mp_vector_init) && variable_def.size()==p2 && !is_comp_vector(arg3);
+                    // ^^ Tricky part: detect if 'arg2' is a newly constructed vector not assigned to a variable
+                    // (i.e. a vector-valued literal).
+                  } else {
+                    CImg<ulongT>::vector(arg3).move_to(l_opcode);
+                    ++arg2;
+                    is_sth&=is_const_scalar(arg3);
+                  }
                   s = ns;
                 }
               if (arg1==~0U) arg1 = arg2;
@@ -22870,8 +22885,9 @@ namespace cimg_library {
               l_opcode.insert(CImg<ulongT>::vector((ulongT)mp_vector_init,pos,0,arg1),0);
               (l_opcode>'y').move_to(opcode);
               opcode[2] = opcode._height;
-              opcode.move_to(code);
-              return_comp = true;
+              opcode.move_to(!is_sth || is_inside_begin || is_new_variable_assignment?code:code_begin);
+              return_comp = !is_sth && is_new_variable_assignment;
+              if (!return_comp) set_reserved_vector(pos); // Prevent from being used in further optimization
               _cimg_mp_return(pos);
             }
 
@@ -23388,18 +23404,31 @@ namespace cimg_library {
             return_comp = is_new_variable_assignment;
             if (!return_comp) set_reserved_vector(pos); // Prevent from being used in further optimization
           } else { // Vector values provided as a list of items
-            is_sth = true; // Can vector be defined once in 'begin()'?
+            is_sth = !is_new_variable_assignment; // Can vector be defined once in 'begin()'?
             arg1 = 0; // Number of specified values
             if (*ss1!=']') for (s = ss1; s<se; ++s) {
                 ns = s; while (ns<se && (*ns!=',' || level[ns - expr._data]!=clevel1) &&
                                (*ns!=']' || level[ns - expr._data]!=clevel)) ++ns;
+                const CImgList<ulongT> &rcode = is_inside_begin?code:code_begin;
+                p1 = rcode.size();
+                p2 = variable_def.size();
                 arg2 = compile(s,ns,depth1,0,block_flags);
-                is_sth&=is_const_scalar(arg2);
+                p3 = rcode.size();
                 if (is_vector(arg2)) {
                   arg3 = size(arg2);
                   CImg<ulongT>::sequence(arg3,arg2 + 1,arg2 + arg3).move_to(l_opcode);
                   arg1+=arg3;
-                } else { CImg<ulongT>::vector(arg2).move_to(l_opcode); ++arg1; }
+                  const CImg<ulongT> &rcode_back = rcode.back();
+                  is_sth&=p3>p1 && rcode_back[1]==arg2 &&
+                    (rcode_back[0]==(ulongT)mp_string_init ||
+                     rcode_back[0]==(ulongT)mp_vector_init) && variable_def.size()==p2 && !is_comp_vector(arg2);
+                  // ^^ Tricky part: detect if 'arg2' is a newly constructed vector not assigned to a variable
+                  // (i.e. a vector-valued literal).
+                } else {
+                  CImg<ulongT>::vector(arg2).move_to(l_opcode);
+                  ++arg1;
+                  is_sth&=is_const_scalar(arg2);
+                }
                 s = ns;
               }
             if (!arg1) _cimg_mp_return(0);
@@ -48624,26 +48653,24 @@ namespace cimg_library {
       int
         w1 = width() - 1, h1 = height() - 1,
         dx01 = x1 - x0, dy01 = y1 - y0;
-
       const bool is_horizontal = cimg::abs(dx01)>cimg::abs(dy01);
       if (is_horizontal) cimg::swap(x0,y0,x1,y1,w1,h1,dx01,dy01);
       if (pattern==~0U && y0>y1) { cimg::swap(x0,x1,y0,y1); dx01*=-1; dy01*=-1; }
+      const float slope = dy01?(float)dx01/dy01:0;
 
       static unsigned int hatch = ~0U - (~0U>>1);
       if (init_hatch) hatch = ~0U - (~0U>>1);
       cimg_init_scanline(opacity);
       const int
         step = y0<=y1?1:-1,
-        hdy01 = dy01*cimg::sign(dx01)/2,
         cy0 = cimg::cut(y0,0,h1),
         cy1 = cimg::cut(y1,0,h1) + step;
       dy01+=dy01?0:1;
 
       for (int y = cy0; y!=cy1; y+=step) {
-        const int
-          yy0 = y - y0,
-          x = x0 + (dx01*yy0 + hdy01)/dy01;
-        if (x>=0 && x<=w1 && pattern&hatch) {
+        const float fx = x0 + (y - y0)*slope;
+        if (fx>=0 && fx<=w1 && pattern&hatch) {
+          const int x = (int)(fx + 0.5f);
           T *const ptrd = is_horizontal?data(y,x):data(x,y);
           cimg_forC(*this,c) {
             const T val = color[c];
@@ -48697,10 +48724,7 @@ namespace cimg_library {
 
       const bool is_horizontal = cimg::abs(dx01)>cimg::abs(dy01);
       if (is_horizontal) cimg::swap(x0,y0,x1,y1,w1,h1,dx01,dy01);
-      if (pattern==~0U && y0>y1) {
-        cimg::swap(x0,x1,y0,y1,iz0,iz1);
-        dx01*=-1; dy01*=-1; diz01*=-1;
-      }
+      if (pattern==~0U && y0>y1) { cimg::swap(x0,x1,y0,y1,iz0,iz1); dx01*=-1; dy01*=-1; diz01*=-1; }
 
       static unsigned int hatch = ~0U - (~0U>>1);
       if (init_hatch) hatch = ~0U - (~0U>>1);
