@@ -522,6 +522,18 @@ extern "C" {
 #include <libheif/heif_cxx.h>
 #endif
 
+// Configure WebP support
+// (https://chromium.googlesource.com/webm/libwebp/)
+//
+// Define 'cimg_use_webp' to enable WebP support.
+//
+// WebP library may be used to get a native support of '.webp' files.
+// (see method 'CImg<T>::{load,save}_webp()').
+#ifdef cimg_use_webp
+#include <webp/decode.h>
+#include <webp/encode.h>
+#endif
+
 // Configure LibMINC2 support.
 // (http://en.wikibooks.org/wiki/MINC/Reference/MINC2.0_File_Format_Reference)
 //
@@ -26696,12 +26708,18 @@ namespace cimg_library {
 
         // Forward search
         if (step>0) {
-          while (ptr<ptre && (double)*ptr!=val) ptr+=step;
+          if (cimg::type<double>::is_nan(val))
+            while (ptr<ptre && !cimg::type<double>::is_nan(*ptr)) ptr+=step;
+          else
+            while (ptr<ptre && (double)*ptr!=val) ptr+=step;
           return ptr>=ptre?-1.:(double)(ptr - ptrb);
         }
 
         // Backward search.
-        while (ptr>=ptrb && (double)*ptr!=val) ptr+=step;
+        if (cimg::type<double>::is_nan(val))
+          while (ptr>=ptrb && !cimg::type<double>::is_nan(*ptr)) ptr+=step;
+        else
+          while (ptr>=ptrb && (double)*ptr!=val) ptr+=step;
         return ptr<ptrb?-1.:(double)(ptr - ptrb);
       }
 
@@ -26728,22 +26746,30 @@ namespace cimg_library {
         // Forward search.
         if (step>0) {
           do {
-            while (ptr1<ptr1e && *ptr1!=*ptr2b) ptr1+=step;
+            if (cimg::type<double>::is_nan(*ptr2b))
+              while (ptr1<ptr1e && !cimg::type<double>::is_nan(*ptr1)) ptr1+=step;
+            else
+              while (ptr1<ptr1e && *ptr1!=*ptr2b) ptr1+=step;
             if (ptr1>=ptr1e) return -1.;
             p1 = ptr1 + 1;
             p2 = ptr2b + 1;
-            while (p1<ptr1e && p2<ptr2e && *p1==*p2) { ++p1; ++p2; }
+            while (p1<ptr1e && p2<ptr2e &&
+                   ((cimg::type<double>::is_nan(*p1) && cimg::type<double>::is_nan(*p2)) || *p1==*p2)) { ++p1; ++p2; }
           } while (p2<ptr2e && (ptr1+=step)<ptr1e);
           return p2<ptr2e?-1.:(double)(ptr1 - ptr1b);
         }
 
         // Backward search.
         do {
-          while (ptr1>=ptr1b && *ptr1!=*ptr2b) ptr1+=step;
+          if (cimg::type<double>::is_nan(*ptr2b))
+            while (ptr1>=ptr1b && !cimg::type<double>::is_nan(*ptr1)) ptr1+=step;
+          else
+            while (ptr1>=ptr1b && *ptr1!=*ptr2b) ptr1+=step;
           if (ptr1<ptr1b) return -1.;
           p1 = ptr1 + 1;
           p2 = ptr2b + 1;
-          while (p1<ptr1e && p2<ptr2e && *p1==*p2) { ++p1; ++p2; }
+          while (p1<ptr1e && p2<ptr2e &&
+                 ((cimg::type<double>::is_nan(*p1) && cimg::type<double>::is_nan(*p2)) || *p1==*p2)) { ++p1; ++p2; }
         } while (p2<ptr2e && (ptr1+=step)>=ptr1b);
         return p2<ptr2e?-1.:(double)(ptr1 - ptr1b);
       }
@@ -29022,61 +29048,54 @@ namespace cimg_library {
         const double
           *ptr1 = &_mp_arg(2) + 1,
           *ptr2 = &_mp_arg(4) + 1;
-        unsigned int p1 = (unsigned int)mp.opcode[3], p2 = (unsigned int)mp.opcode[5], n;
-        const int N = (int)_mp_arg(6);
+        unsigned int
+          siz1 = (unsigned int)mp.opcode[3],
+          siz2 = (unsigned int)mp.opcode[5],
+          n;
+        int N = (int)_mp_arg(6);
         const bool case_sensitive = (bool)_mp_arg(7);
-        bool still_equal = true;
-        double value;
-        if (!N) return true;
-
-        // Compare all values.
-        if (N<0) {
-          if (p1>0 && p2>0) { // Vector == vector
-            if (p1!=p2) return false;
-            if (case_sensitive)
-              while (still_equal && p1--) still_equal = *(ptr1++)==*(ptr2++);
-            else
-              while (still_equal && p1--)
-                still_equal = cimg::lowercase(*(ptr1++))==cimg::lowercase(*(ptr2++));
-            return still_equal;
-          } else if (p1>0 && !p2) { // Vector == scalar
-            value = _mp_arg(4);
-            if (!case_sensitive) value = cimg::lowercase(value);
-            while (still_equal && p1--) still_equal = *(ptr1++)==value;
-            return still_equal;
-          } else if (!p1 && p2>0) { // Scalar == vector
-            value = _mp_arg(2);
-            if (!case_sensitive) value = cimg::lowercase(value);
-            while (still_equal && p2--) still_equal = *(ptr2++)==value;
-            return still_equal;
-          } else { // Scalar == scalar
-            if (case_sensitive) return _mp_arg(2)==_mp_arg(4);
-            else return cimg::lowercase(_mp_arg(2))==cimg::lowercase(_mp_arg(4));
-          }
+        if (!N) return 1;
+        if (N<0) { // Compare all values
+          if (siz1>0 && siz2>0 && siz1!=siz2) return 0;
+          N = std::max(siz1,siz2);
         }
 
-        // Compare only first N values.
-        if (p1>0 && p2>0) { // Vector == vector
-          n = cimg::min((unsigned int)N,p1,p2);
+        // Compare first N values.
+        bool still_equal = true;
+        if (siz1>0 && siz2>0) { // Vector == vector
+          n = cimg::min((unsigned int)N,siz1,siz2);
           if (case_sensitive)
-            while (still_equal && n--) still_equal = *(ptr1++)==(*ptr2++);
+            while (still_equal && n--) {
+              still_equal = (cimg::type<double>::is_nan(*ptr1) && cimg::type<double>::is_nan(*ptr2)) ||
+                *ptr1==*ptr2;
+              ++ptr1; ++ptr2;
+            }
           else
-            while (still_equal && n--) still_equal = cimg::lowercase(*(ptr1++))==cimg::lowercase(*(ptr2++));
+            while (still_equal && n--) {
+              still_equal = (cimg::type<double>::is_nan(*ptr1) && cimg::type<double>::is_nan(*ptr2)) ||
+                cimg::lowercase(*ptr1)==cimg::lowercase(*ptr2);
+              ++ptr1; ++ptr2;
+            }
           return still_equal;
-        } else if (p1>0 && !p2) { // Vector == scalar
-          n = std::min((unsigned int)N,p1);
-          value = _mp_arg(4);
-          if (!case_sensitive) value = cimg::lowercase(value);
-          while (still_equal && n--) still_equal = *(ptr1++)==value;
+        } else if (siz1>0 && !siz2) { // Vector == scalar
+          n = std::min((unsigned int)N,siz1);
+          const double value = case_sensitive?_mp_arg(4):cimg::lowercase(_mp_arg(4));
+          if (cimg::type<double>::is_nan(value))
+            while (still_equal && n--) still_equal = cimg::type<double>::is_nan(*(ptr1++));
+          else
+            while (still_equal && n--) still_equal = *(ptr1++)==value;
           return still_equal;
-        } else if (!p1 && p2>0) { // Scalar == vector
-          n = std::min((unsigned int)N,p2);
-          value = _mp_arg(2);
-          if (!case_sensitive) value = cimg::lowercase(value);
-          while (still_equal && n--) still_equal = *(ptr2++)==value;
+        } else if (!siz1 && siz2>0) { // Scalar == vector
+          n = std::min((unsigned int)N,siz2);
+          const double value = case_sensitive?_mp_arg(2):cimg::lowercase(_mp_arg(2));
+          if (cimg::type<double>::is_nan(value))
+            while (still_equal && siz2--) still_equal = cimg::type<double>::is_nan(*(ptr2++));
+          else
+            while (still_equal && n--) still_equal = *(ptr2++)==value;
           return still_equal;
         }  // Scalar == scalar
         if (case_sensitive) return _mp_arg(2)==_mp_arg(4);
+        else if (cimg::type<double>::is_nan(_mp_arg(2))) return cimg::type<double>::is_nan(_mp_arg(4));
         return cimg::lowercase(_mp_arg(2))==cimg::lowercase(_mp_arg(4));
       }
 
@@ -29241,18 +29260,18 @@ namespace cimg_library {
 
       static double mp_vector_resize(_cimg_math_parser& mp) {
         double *const ptrd = &_mp_arg(1) + 1;
-        const unsigned int siz = (unsigned int)mp.opcode[2], p2 = (unsigned int)mp.opcode[4];
+        const unsigned int target_siz = (unsigned int)mp.opcode[2], initial_siz = (unsigned int)mp.opcode[4];
         const int
           interpolation = (int)_mp_arg(5),
           boundary_conditions = (int)_mp_arg(6);
-        if (p2) { // Resize vector
+        if (initial_siz) { // Resize vector
           const double *const ptrs = &_mp_arg(3) + 1;
-          CImg<doubleT>(ptrd,siz,1,1,1,true) = CImg<doubleT>(ptrs,p2,1,1,1,true).
-            get_resize(siz,1,1,1,interpolation,boundary_conditions);
+          CImg<doubleT>(ptrd,target_siz,1,1,1,true) = CImg<doubleT>(ptrs,initial_siz,1,1,1,true).
+            get_resize(target_siz,1,1,1,interpolation,boundary_conditions);
         } else { // Resize scalar
           const double value = _mp_arg(3);
-          CImg<doubleT>(ptrd,siz,1,1,1,true) = CImg<doubleT>(1,1,1,1,value).resize(siz,1,1,1,interpolation,
-                                                                                   boundary_conditions);
+          CImg<doubleT>(ptrd,target_siz,1,1,1,true) = CImg<doubleT>(1,1,1,1,value).
+            resize(target_siz,1,1,1,interpolation,boundary_conditions);
         }
         return cimg::type<double>::nan();
       }
@@ -32205,8 +32224,7 @@ namespace cimg_library {
     const CImg<T>& SVD(CImg<t>& U, CImg<t>& S, CImg<t>& V, const bool sorting=true,
                        const unsigned int max_iteration=40, const float lambda=0) const {
       typedef _cimg_Ttfloat Ttfloat;
-      const Ttfloat eps = (Ttfloat)1e-25;
-
+      const Ttfloat eps = (Ttfloat)1e-15;
       if (is_empty()) { U.assign(); S.assign(); V.assign(); }
       else if (_depth!=1 || _spectrum!=1)
         throw CImgInstanceException(_cimg_instance
@@ -55349,6 +55367,7 @@ namespace cimg_library {
         else if (!cimg::strcasecmp(ext,"gif")) load_gif_external(filename);
         else if (!cimg::strcasecmp(ext,"heic") ||
                  !cimg::strcasecmp(ext,"avif")) load_heif(filename);
+        else if (!cimg::strcasecmp(ext,"webp")) load_webp(filename);
 
         // 3D binary formats
         else if (!cimg::strcasecmp(ext,"dcm") ||
@@ -55420,6 +55439,7 @@ namespace cimg_library {
           else if (!cimg::strcasecmp(f_type,"tif")) load_tiff(filename);
           else if (!cimg::strcasecmp(f_type,"gif")) load_gif_external(filename);
           else if (!cimg::strcasecmp(f_type,"dcm")) load_medcon_external(filename);
+          else if (!cimg::strcasecmp(f_type,"webp")) load_webp(filename);
           else is_loaded = false;
         } catch (CImgIOException&) { is_loaded = false; }
       }
@@ -58189,6 +58209,86 @@ namespace cimg_library {
 #endif
     }
 
+    //! Load image from a WebP file.
+    /**
+       \param filename Filename, as a C-string.
+    **/
+    CImg<T>& load_webp(const char *const filename) {
+      return _load_webp(filename);
+    }
+
+    //! Load image from a WebP file \newinstance.
+    static CImg<T> get_load_webp(const char *const filename) {
+      return CImg<T>().load_webp(filename);
+    }
+
+    CImg<T>& _load_webp(const char *const filename) {
+#ifndef cimg_use_webp
+      return load_other(filename);
+#else
+      std::FILE *file = cimg::fopen(filename, "rb");
+      const long data_size = cimg::fsize(file);
+      if (data_size <= 0) {
+        cimg::fclose(file);
+        throw CImgIOException(_cimg_instance
+                              "load_webp(): Failed to get file size '%s'.",
+                              cimg_instance,
+                              filename);
+      }
+      CImg<ucharT> buffer(data_size);
+      cimg::fread(buffer._data, buffer._width, file);
+      cimg::fclose(file);
+
+      WebPDecoderConfig config;
+      if (!WebPInitDecoderConfig(&config))
+        throw CImgIOException(_cimg_instance
+                              "load_webp(): Failed to init WebP decoder config.",
+                              cimg_instance);
+
+      if (WebPGetFeatures(buffer._data, data_size, &config.input) != VP8_STATUS_OK)
+        throw CImgIOException(_cimg_instance
+                              "load_webp(): Failed to get image meta info of '%s'.",
+                              cimg_instance,
+                              filename);
+
+      if (config.input.has_animation)
+        throw CImgIOException(_cimg_instance
+                              "load_webp(): Does not support animated WebP '%s'.",
+                              cimg_instance,
+                              filename);
+
+      int width = config.input.width, height = config.input.height;
+      if (config.input.has_alpha) {
+        config.output.colorspace = MODE_RGBA;
+        assign(width,height,1,4);
+      } else {
+        config.output.colorspace = MODE_RGB;
+        assign(width,height,1,3);
+      }
+      if (WebPDecode(buffer._data, data_size, &config) != VP8_STATUS_OK)
+        throw CImgIOException(_cimg_instance
+                              "load_webp(): Failed to decode image '%s'.",
+                              cimg_instance,
+                              filename);
+
+      uint8_t *imgData = config.output.u.RGBA.rgba;
+      T *ptr_r = _data, *ptr_g = _data + 1UL*width*height,
+        *ptr_b = _data + 2UL*width*height;
+      T *ptr_a = _spectrum==3 ? NULL : _data + 3UL*width*height;
+      cimg_forY(*this,y) {
+        const unsigned char *ptrs = (unsigned char*)&imgData[y*width*_spectrum];
+        cimg_forX(*this,x) {
+          *(ptr_r++) = (T)*(ptrs++);
+          *(ptr_g++) = (T)*(ptrs++);
+          *(ptr_b++) = (T)*(ptrs++);
+          if (ptr_a) *(ptr_a++) = (T)*(ptrs++);
+        }
+      }
+      WebPFreeDecBuffer(&config.output);
+      return *this;
+#endif
+    }
+
     //! Load image using GraphicsMagick's external tool 'gm'.
     /**
        \param filename Filename, as a C-string.
@@ -59942,6 +60042,7 @@ namespace cimg_library {
       else if (!cimg::strcasecmp(ext,"exr")) return save_exr(fn);
       else if (!cimg::strcasecmp(ext,"tif") ||
                !cimg::strcasecmp(ext,"tiff")) return save_tiff(fn);
+      else if (!cimg::strcasecmp(ext,"webp")) return save_webp(fn);
 
       // 3D binary formats
       else if (!*ext) {
@@ -60203,6 +60304,62 @@ namespace cimg_library {
       }
       if (!file) cimg::fclose(nfile);
       return *this;
+    }
+
+    //! Save image as a WebP file.
+    /**
+      \param filename Filename, as a C-string.
+      \param quality Image quality (in %)
+    **/
+    const CImg<T>& save_webp(const char *const filename, const int quality=100) const {
+      return _save_webp(filename,quality);
+    }
+
+    const CImg<T>& _save_webp(const char *const filename, const int quality) const {
+      if (!filename)
+        throw CImgArgumentException(_cimg_instance
+                                    "save_webp(): Specified filename is (null).",
+                                    cimg_instance);
+      if (_spectrum != 3 && _spectrum != 4)
+        throw CImgArgumentException(_cimg_instance
+                                    "save_webp(): WebP only supports (A)RGB colorspace.",
+                                    cimg_instance);
+#ifndef cimg_use_webp
+      cimg::unused(quality);
+      return save_other(filename);
+#else
+      std::FILE *file = cimg::fopen(filename, "wb");
+      CImg<uint8_t> rgbaBuffer(size());
+      T *ptr_r = _data, *ptr_g = _data + 1UL*_width*_height,
+        *ptr_b = _data + 2UL*_width*_height, *ptr_a = _spectrum==3?NULL:_data + 3UL*_width*_height;
+      uint8_t *ptr = rgbaBuffer._data;
+      cimg_forY(*this,y) {
+        cimg_forX(*this,x) {
+          *(ptr++) = (T)*(ptr_r++);
+          *(ptr++) = (T)*(ptr_g++);
+          *(ptr++) = (T)*(ptr_b++);
+          if (ptr_a) *(ptr++) = (T)*(ptr_a++);
+        }
+      }
+      uint8_t *imgData = NULL;
+      const int stride = _width*_spectrum*sizeof(uint8_t);
+      size_t size = 0;
+      if (_spectrum == 3) {
+        size = WebPEncodeRGB(rgbaBuffer._data, _width, _height, stride, (float)quality, &imgData);
+      } else {
+        size = WebPEncodeRGBA(rgbaBuffer._data, _width, _height, stride, (float)quality, &imgData);
+      }
+      if (!imgData) {
+        throw CImgIOException(_cimg_instance
+                              "save_webp(): Failed to encode image to file '%s'.",
+                              cimg_instance,
+                              filename);
+      }
+      cimg::fwrite(imgData, size, file);
+      cimg::fclose(file);
+      WebPFree(imgData);
+      return *this;
+#endif
     }
 
     //! Save image as a JPEG file.
@@ -68314,7 +68471,8 @@ namespace cimg_library {
         *const _pfm = "pfm",
         *const _png = "png",
         *const _pnm = "pnm",
-        *const _tif = "tif";
+        *const _tif = "tif",
+        *const _webp = "webp";
 
       const char *f_type = 0;
       CImg<char> header;
@@ -68347,6 +68505,9 @@ namespace cimg_library {
         else if ((uheader[0]==0x49 && uheader[1]==0x49 && uheader[2]==0x2A && uheader[3]==0x00) ||
                  (uheader[0]==0x4D && uheader[1]==0x4D && uheader[2]==0x00 && uheader[3]==0x2A)) // TIFF
           f_type = _tif;
+        else if (uheader[0]==0x52 && uheader[1]==0x49 && uheader[2]==0x46 && uheader[3]==0x46 &&
+                 uheader[8]==0x57 && uheader[9]==0x45 && uheader[10]==0x42 && uheader[11]==0x50) // WebP
+          f_type = _webp;
         else { // PNM or PFM
           CImgList<char> _header = header.get_split(CImg<char>::vector('\n'),0,false);
           cimglist_for(_header,l) {
