@@ -6421,6 +6421,12 @@ namespace cimg_library {
       return (float)std::fabs((double)a);
     }
 
+    //! Return fractional part of a value.
+    template<typename T>
+    inline T frac(const T x) {
+      return x - std::floor(x);
+    }
+
     //! Return hyperbolic arcosine of a value.
     inline double acosh(const double x) {
 #if cimg_use_cpp11==1 && !defined(_MSC_VER)
@@ -7114,6 +7120,36 @@ namespace cimg_library {
         return (double)fn;
       }
       return _fibonacci(n); // Not precise, but better than the wrong overflowing calculation
+    }
+
+    //! Wave function.
+    /**
+       \param x Value to evaluate.
+       \param type Wave type.
+       Can be { 0:Square | 1:Triangular | 2:Ascending sawtooth | 3: Descending sawtooth | 4:Sinusoidal }.
+       \note A wave function has a period of 1, and has value in [-1,1].
+       \return Function value.
+    **/
+    inline double wave(const double x, const unsigned int type=4) {
+      const double p = cimg::frac(x);
+      double res = 0;
+      switch (type) {
+      case 0 : // Square
+        res = p<0.5?1:-1;
+        break;
+      case 1 : // Triangle
+        res = p<0.25?4*p:p>0.75?4*(p - 1):1 - 4*(p - 0.25);
+        break;
+      case 2 : // Ascending sawtooth
+        res = 2*(p - 0.5);
+        break;
+      case 3 : // Descending sawtooth
+        res = -2*(p - 0.5);
+        break;
+      default: // Sine
+        res = std::sin(2*cimg::PI*p);
+      }
+      return res;
     }
 
     //! Calculate greatest common divisor of two integers.
@@ -9788,6 +9824,9 @@ namespace cimg_library {
     **/
     CImgDisplay& wait(const unsigned int milliseconds) {
       cimg::wait(milliseconds,&_timer);
+#if cimg_display==3
+      process_events(false);
+#endif
       return *this;
     }
 
@@ -12091,20 +12130,20 @@ namespace cimg_library {
     // Process all events in event queue.
     static int process_events(bool wait_event) {
       cimg::SDL3_attr &SDL3_attr = cimg::SDL3_attr::ref();
-      SDL_Event event;
-      bool is_event, _wait_event = wait_event;
-      if (!wait_event) SDL3_attr.lock();
       const SDL_ThreadID current_thread_id = SDL_GetCurrentThreadID();
       if (current_thread_id!=SDL3_attr.main_thread_id) {
         if (wait_event) cimg::sleep(8);
-        _wait_event = false;
+        wait_event = false;
       }
+      if (!wait_event) SDL3_attr.lock();
 
       // Dispatch global events to managed CImgDisplay instances.
+      SDL_Event event;
+      bool is_event, _wait_event = wait_event;
       do {
         is_event = _wait_event?SDL_WaitEvent(&event):SDL_PollEvent(&event);
         if (is_event) {
-          if (event.type == SDL_EVENT_QUIT) {
+          if (event.type==SDL_EVENT_QUIT) {
             for (unsigned int k = 0; k<SDL3_attr.nb_cimg_displays; ++k) {
               CImgDisplay &disp = *SDL3_attr.cimg_displays[k];
               disp._is_closed = disp._is_event = true;
@@ -19194,7 +19233,7 @@ namespace cimg_library {
           }
 
         for (s = se3, ns = se2; s>ss; --s, --ns)
-          if (*s=='<' && *ns=='=' && level[s - expr._data]==clevel) { // Less or equal than ('<=')
+          if (*s=='<' && *ns=='=' && *ps!='$' && level[s - expr._data]==clevel) { // Less or equal than ('<=')
             _cimg_mp_op("Operator '<='");
             arg1 = compile(ss,s,depth1,0,block_flags);
             arg2 = compile(s + 2,se,depth1,0,block_flags);
@@ -19209,7 +19248,7 @@ namespace cimg_library {
           }
 
         for (s = se3, ns = se2; s>ss; --s, --ns)
-          if (*s=='>' && *ns=='=' && level[s - expr._data]==clevel) { // Greater or equal than ('>=')
+          if (*s=='>' && *ns=='=' && *ps!='$' && level[s - expr._data]==clevel) { // Greater or equal than ('>=')
             _cimg_mp_op("Operator '>='");
             arg1 = compile(ss,s,depth1,0,block_flags);
             arg2 = compile(s + 2,se,depth1,0,block_flags);
@@ -19224,7 +19263,7 @@ namespace cimg_library {
           }
 
         for (s = se2, ns = se1, ps = se3; s>ss; --s, --ns, --ps)
-          if (*s=='<' && *ns!='<' && *ps!='<' && level[s - expr._data]==clevel) { // Less than ('<')
+          if (*s=='<' && *ns!='<' && *ps!='<' && *ps!='$' && level[s - expr._data]==clevel) { // Less than ('<')
             _cimg_mp_op("Operator '<'");
             arg1 = compile(ss,s,depth1,0,block_flags);
             arg2 = compile(s + 1,se,depth1,0,block_flags);
@@ -19239,7 +19278,7 @@ namespace cimg_library {
           }
 
         for (s = se2, ns = se1, ps = se3; s>ss; --s, --ns, --ps)
-          if (*s=='>' && *ns!='>' && *ps!='>' && level[s - expr._data]==clevel) { // Greater than ('>')
+          if (*s=='>' && *ns!='>' && *ps!='>' && *ps!='$' && level[s - expr._data]==clevel) { // Greater than ('>')
             _cimg_mp_op("Operator '>'");
             arg1 = compile(ss,s,depth1,0,block_flags);
             arg2 = compile(s + 1,se,depth1,0,block_flags);
@@ -19254,7 +19293,7 @@ namespace cimg_library {
           }
 
         for (s = se3, ns = se2; s>ss; --s, --ns)
-          if (*s=='<' && *ns=='<' && level[s - expr._data]==clevel) { // Left bit shift ('<<')
+          if (*s=='<' && *ns=='<' && *ps!='$' && level[s - expr._data]==clevel) { // Left bit shift ('<<')
             _cimg_mp_op("Operator '<<'");
             arg1 = compile(ss,s,depth1,0,block_flags);
             arg2 = compile(s + 2,se,depth1,0,block_flags);
@@ -19275,7 +19314,7 @@ namespace cimg_library {
           }
 
         for (s = se3, ns = se2; s>ss; --s, --ns)
-          if (*s=='>' && *ns=='>' && level[s - expr._data]==clevel) { // Right bit shift ('>>')
+          if (*s=='>' && *ns=='>' && *ps!='$' && level[s - expr._data]==clevel) { // Right bit shift ('>>')
             _cimg_mp_op("Operator '>>'");
             arg1 = compile(ss,s,depth1,0,block_flags);
             arg2 = compile(s + 2,se,depth1,0,block_flags);
@@ -20785,7 +20824,7 @@ namespace cimg_library {
               _cimg_mp_scalar3(mp_cut,arg1,arg2,arg3);
             }
 
-            if (!std::strncmp(ss,"cumulate(",9)) { // Mirror image
+            if (!std::strncmp(ss,"cumulate(",9)) { // Cumulate
               _cimg_mp_op("Function 'cumulate()'");
               s0 = ss + 9;
               s1 = s0; while (s1<se1 && (*s1!=',' || level[s1 - expr._data]!=clevel1)) ++s1;
@@ -21870,6 +21909,14 @@ namespace cimg_library {
               if (is_vector(arg1)) _cimg_mp_vector1_v(mp_floor,arg1);
               if (is_const_scalar(arg1)) _cimg_mp_const_scalar(std::floor(mem[arg1]));
               _cimg_mp_scalar1(mp_floor,arg1);
+            }
+
+            if (!std::strncmp(ss,"frac(",5)) { // Fractional part
+              _cimg_mp_op("Function 'frac()'");
+              arg1 = compile(ss5,se1,depth1,0,block_flags);
+              if (is_vector(arg1)) _cimg_mp_vector1_v(mp_frac,arg1);
+              if (is_const_scalar(arg1)) _cimg_mp_const_scalar(cimg::frac(mem[arg1]));
+              _cimg_mp_scalar1(mp_frac,arg1);
             }
 
             if (!std::strncmp(ss,"fsize(",6)) { // File size
@@ -24129,6 +24176,18 @@ namespace cimg_library {
               _cimg_mp_return(pos);
             }
 
+            if (!std::strncmp(ss,"wave(",5)) { // Wave function
+              _cimg_mp_op("Function 'wave()'");
+              s1 = ss5; while (s1<se1 && (*s1!=',' || level[s1 - expr._data]!=clevel1)) ++s1;
+              arg1 = compile(ss5,s1,depth1,0,block_flags); // x
+              arg2 = s1<se1?compile(++s1,se1,depth1,0,block_flags):4; // type
+              _cimg_mp_check_type(arg2,2,1,0);
+              if (is_vector(arg1)) _cimg_mp_vector2_vs(mp_wave,arg1,arg2);
+              if (is_const_scalar(arg1) && is_const_scalar(arg2)) // Optimize constant case
+                _cimg_mp_const_scalar(cimg::wave(mem[arg1],(unsigned int)mem[arg2]));
+              _cimg_mp_scalar2(mp_wave,arg1,arg2);
+            }
+
             if (!std::strncmp(ss,"while(",6)) { // While...do
               _cimg_mp_op("Function 'while()'");
               s0 = *ss5=='('?ss6:ss8;
@@ -24960,7 +25019,7 @@ namespace cimg_library {
       // Find and return index of current image 'imgin' within image list 'imglist'.
       unsigned int get_mem_img_index() {
         if (mem_img_index==~0U) {
-          if (&imgout>imglist.data() && &imgout<imglist.end())
+          if (&imgout>=imglist.data() && &imgout<imglist.end())
             mem_img_index = const_scalar((double)(&imgout - imglist.data()));
           else {
             unsigned int pos = ~0U;
@@ -26903,6 +26962,10 @@ namespace cimg_library {
 
       static double mp_floor(_cimg_math_parser& mp) {
         return std::floor(_mp_arg(2));
+      }
+
+      static double mp_frac(_cimg_math_parser& mp) {
+        return cimg::frac(_mp_arg(2));
       }
 
       static double mp_for(_cimg_math_parser& mp) {
@@ -30556,6 +30619,10 @@ namespace cimg_library {
         CImg<doubleT>(ptrd,wB,hB,dB,sA,true) = CImg<doubleT>(ptrs,wA,hA,dA,sA,true).
           get_warp(CImg<doubleT>(ptrw,wB,hB,dB,sB,true),mode,interpolation,boundary_conditions);
         return cimg::type<double>::nan();
+      }
+
+      static double mp_wave(_cimg_math_parser& mp) {
+        return cimg::wave(_mp_arg(2),(unsigned int)_mp_arg(3));
       }
 
       static double mp_while(_cimg_math_parser& mp) {
