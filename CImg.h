@@ -54,7 +54,7 @@
 
 // Set version number of the library.
 #ifndef cimg_version
-#define cimg_version 360
+#define cimg_version 362
 
 /*-----------------------------------------------------------
  #
@@ -2507,9 +2507,9 @@ namespace cimg_library {
 
 #if cimg_OS==2
 // Disable parallelization of simple loops on Windows, due to noticed performance drop.
-#define cimg_openmp_for(instance,expr,min_size) cimg_rof((instance),ptr,T) *ptr = (T)(expr);
+#define cimg_openmp_for(instance,expr,min_size,T) cimg_rof((instance),ptr,T) *ptr = (T)(expr);
 #else
-#define cimg_openmp_for(instance,expr,min_size) \
+#define cimg_openmp_for(instance,expr,min_size,T) \
     cimg_pragma_openmp(parallel for cimg_openmp_if_size((instance).size(),min_size)) \
     cimg_rof((instance),ptr,T) *ptr = (T)(expr);
 #endif
@@ -2524,6 +2524,9 @@ namespace cimg_library {
     // Evaluate math expression.
     inline double eval(const char *const expression,
                        const double x=0, const double y=0, const double z=0, const double c=0);
+
+    // Create a directory.
+    inline void create_directory(const char *const dirname, const bool force_overwrite=true);
 
   } // namespace cimg { ...
 
@@ -6530,7 +6533,8 @@ namespace cimg_library {
 
     template<typename t>
     inline t minabs(const t& a, const t& b, const t& abs_b) {
-      return abs_b<cimg::abs(a)?b:a;
+      typedef typename cimg::superset<t,int>::type tint;
+      return (tint)abs_b<(tint)cimg::abs(a)?b:a;
     }
 
     //! Return the maximum between three values.
@@ -6553,7 +6557,8 @@ namespace cimg_library {
 
     template<typename t>
     inline t maxabs(const t& a, const t& b, const t& abs_b) {
-      return abs_b>cimg::abs(a)?b:a;
+      typedef typename cimg::superset<t,int>::type tint;
+      return (tint)abs_b>(tint)cimg::abs(a)?b:a;
     }
 
     //! Return the sign of a value.
@@ -7808,21 +7813,21 @@ namespace cimg_library {
       return date(&out,1);
     }
 
-    //! Convert date to epoch (local time).
+    //! Convert date to epoch (UTC time).
     // 'year' must be >=1900, 'month' in [ 1,12 ], 'day' in [ 1,31 ], 'hour' in [ 0,23 ],
     // 'minute' in [ 0,59 ] and 'second' in [ 0,60 ].
     inline cimg_int64 epoch(const int year, const int month=1,
                             const int day=1, const int hour=0,
                             const int minute=0, const int second=0) {
-      struct tm date;
-      std::memset(&date,0,sizeof(struct tm));
-      date.tm_year = std::max(year,1900) - 1900;
-      date.tm_mon = cimg::cut(month,1,12) - 1;
-      date.tm_mday = cimg::cut(day,1,31);
-      date.tm_hour = std::min(hour,23);
-      date.tm_min = std::min(minute,59);
-      date.tm_sec = std::min(second,60);
-      return (cimg_int64)std::mktime(&date);
+      static const int tab_days[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+#define cimg_is_leap(y) ((!((y)%4) && ((y)%100)) || !((y)%400))
+#define cimg_days_in_month(y,m) ((m)==2 && cimg_is_leap(y)?29:tab_days[cimg::cut(m,1,12) - 1])
+      cimg_int64 days = 0;
+      if (year>=1970) for (int y = 1970; y<year; ++y) days+=cimg_is_leap(y)?366:365;
+      else for (int y = year; y<1970; ++y) days-=cimg_is_leap(y)?366:365;
+      for (int m = 1; m<month; ++m) days+=cimg_days_in_month(year,m);
+      days+=day - 1;
+      return days*86400 + hour*3600 + minute*60 + second;
     }
 
     // Get/set path to the \c curl binary.
@@ -14158,7 +14163,7 @@ namespace cimg_library {
     template<typename t>
     CImg<T>& operator+=(const t value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,*ptr + value,524288);
+      cimg_openmp_for(*this,*ptr + value,524288,T);
       return *this;
     }
 
@@ -14217,7 +14222,7 @@ namespace cimg_library {
      **/
     CImg<T>& operator++() {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,*ptr + 1,524288);
+      cimg_openmp_for(*this,*ptr + 1,524288,T);
       return *this;
     }
 
@@ -14283,7 +14288,7 @@ namespace cimg_library {
     template<typename t>
     CImg<T>& operator-=(const t value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,*ptr - value,524288);
+      cimg_openmp_for(*this,*ptr - value,524288,T);
       return *this;
     }
 
@@ -14319,7 +14324,7 @@ namespace cimg_library {
     **/
     CImg<T>& operator--() {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,*ptr - 1,524288);
+      cimg_openmp_for(*this,*ptr - 1,524288,T);
       return *this;
     }
 
@@ -14387,7 +14392,7 @@ namespace cimg_library {
     template<typename t>
     CImg<T>& operator*=(const t value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,*ptr * value,262144);
+      cimg_openmp_for(*this,*ptr * value,262144,T);
       return *this;
     }
 
@@ -14652,7 +14657,7 @@ namespace cimg_library {
     template<typename t>
     CImg<T>& operator/=(const t value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,*ptr / value,32768);
+      cimg_openmp_for(*this,*ptr / value,32768,T);
       return *this;
     }
 
@@ -14716,7 +14721,7 @@ namespace cimg_library {
     template<typename t>
     CImg<T>& operator%=(const t value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,cimg::mod(*ptr,(T)value),16384);
+      cimg_openmp_for(*this,cimg::mod(*ptr,(T)value),16384,T);
       return *this;
     }
 
@@ -14782,7 +14787,7 @@ namespace cimg_library {
     template<typename t>
     CImg<T>& operator&=(const t value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,(longT)*ptr & (longT)value,32768);
+      cimg_openmp_for(*this,(longT)*ptr & (longT)value,32768,T);
       return *this;
     }
 
@@ -14848,7 +14853,7 @@ namespace cimg_library {
     template<typename t>
     CImg<T>& operator|=(const t value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,(longT)*ptr | (longT)value,32768);
+      cimg_openmp_for(*this,(longT)*ptr | (longT)value,32768,T);
       return *this;
     }
 
@@ -14916,7 +14921,7 @@ namespace cimg_library {
     template<typename t>
     CImg<T>& operator^=(const t value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,(longT)*ptr ^ (longT)value,32768);
+      cimg_openmp_for(*this,(longT)*ptr ^ (longT)value,32768,T);
       return *this;
     }
 
@@ -14986,7 +14991,7 @@ namespace cimg_library {
     template<typename t>
     CImg<T>& operator<<=(const t value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,((longT)*ptr) << (int)value,65536);
+      cimg_openmp_for(*this,((longT)*ptr) << (int)value,65536,T);
       return *this;
     }
 
@@ -15053,7 +15058,7 @@ namespace cimg_library {
     template<typename t>
     CImg<T>& operator>>=(const t value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,((longT)*ptr) >> (int)value,65536);
+      cimg_openmp_for(*this,((longT)*ptr) >> (int)value,65536,T);
       return *this;
     }
 
@@ -19525,7 +19530,7 @@ namespace cimg_library {
           }
 
         for (s = se2, ns = se1; s>ss; --s, --ns)
-          if (*s=='%' && *ns!='^' && level[s - expr._data]==clevel) { // Modulo ('%')
+          if (*s=='%' && *ns!='^' && *ps!='$' && level[s - expr._data]==clevel) { // Modulo ('%')
             _cimg_mp_op("Operator '%'");
             arg1 = compile(ss,s,depth1,0,block_flags);
             arg2 = compile(s + 1,se,depth1,0,block_flags);
@@ -19631,7 +19636,7 @@ namespace cimg_library {
       cimg_skip_iterative_operator_parsing :
 
         // Percentage computation.
-        if (*se1=='%') {
+        if (*se1=='%' && se1>ss && *se2!='$') {
           arg1 = compile(ss,se1,depth1,0,block_flags);
           arg2 = is_const_scalar(arg1)?0:const_scalar(100);
           if (is_vector(arg1)) _cimg_mp_vector2_vs(mp_div,arg1,arg2);
@@ -30948,7 +30953,7 @@ namespace cimg_library {
 #define _cimg_create_pointwise_functions(name,func,min_size) \
     CImg<T>& name() { \
       if (is_empty()) return *this; \
-      cimg_openmp_for(*this,func((typename cimg::superset<T,float>::type)*ptr),min_size); \
+      cimg_openmp_for(*this,func((typename cimg::superset<T,float>::type)*ptr),min_size,T); \
       return *this; \
     } \
     CImg<Tfloat> get_##name() const { \
@@ -31305,18 +31310,18 @@ namespace cimg_library {
     **/
     CImg<T>& pow(const double p) {
       if (is_empty()) return *this;
-      if (p==-4) { cimg_openmp_for(*this,1/(Tfloat)cimg::pow4(*ptr),32768); return *this; }
-      if (p==-3) { cimg_openmp_for(*this,1/(Tfloat)cimg::pow3(*ptr),32768); return *this; }
-      if (p==-2) { cimg_openmp_for(*this,1/(Tfloat)cimg::sqr(*ptr),32768); return *this; }
-      if (p==-1) { cimg_openmp_for(*this,1/(Tfloat)*ptr,32768); return *this; }
-      if (p==-0.5) { cimg_openmp_for(*this,1/std::sqrt((Tfloat)*ptr),8192); return *this; }
+      if (p==-4) { cimg_openmp_for(*this,1/(Tfloat)cimg::pow4(*ptr),32768,T); return *this; }
+      if (p==-3) { cimg_openmp_for(*this,1/(Tfloat)cimg::pow3(*ptr),32768,T); return *this; }
+      if (p==-2) { cimg_openmp_for(*this,1/(Tfloat)cimg::sqr(*ptr),32768,T); return *this; }
+      if (p==-1) { cimg_openmp_for(*this,1/(Tfloat)*ptr,32768,T); return *this; }
+      if (p==-0.5) { cimg_openmp_for(*this,1/std::sqrt((Tfloat)*ptr),8192,T); return *this; }
       if (p==0) return fill((T)1);
       if (p==0.5) return sqrt();
       if (p==1) return *this;
       if (p==2) return sqr();
-      if (p==3) { cimg_openmp_for(*this,cimg::pow3(*ptr),262144); return *this; }
-      if (p==4) { cimg_openmp_for(*this,cimg::pow4(*ptr),131072); return *this; }
-      cimg_openmp_for(*this,std::pow((Tfloat)*ptr,(Tfloat)p),1024);
+      if (p==3) { cimg_openmp_for(*this,cimg::pow3(*ptr),262144,T); return *this; }
+      if (p==4) { cimg_openmp_for(*this,cimg::pow4(*ptr),131072,T); return *this; }
+      cimg_openmp_for(*this,std::pow((Tfloat)*ptr,(Tfloat)p),1024,T);
       return *this;
     }
 
@@ -31368,7 +31373,7 @@ namespace cimg_library {
     **/
     CImg<T>& rol(const unsigned int n=1) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,cimg::rol(*ptr,n),32768);
+      cimg_openmp_for(*this,cimg::rol(*ptr,n),32768,T);
       return *this;
     }
 
@@ -31420,7 +31425,7 @@ namespace cimg_library {
     **/
     CImg<T>& ror(const unsigned int n=1) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,cimg::ror(*ptr,n),32768);
+      cimg_openmp_for(*this,cimg::ror(*ptr,n),32768,T);
       return *this;
     }
 
@@ -31518,7 +31523,7 @@ namespace cimg_library {
      **/
     CImg<T>& min(const T& value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,std::min(*ptr,value),65536);
+      cimg_openmp_for(*this,std::min(*ptr,value),65536,T);
       return *this;
     }
 
@@ -31576,7 +31581,7 @@ namespace cimg_library {
      **/
     CImg<T>& max(const T& value) {
       if (is_empty()) return *this;
-      cimg_openmp_for(*this,std::max(*ptr,value),65536);
+      cimg_openmp_for(*this,std::max(*ptr,value),65536,T);
       return *this;
     }
 
@@ -31635,7 +31640,7 @@ namespace cimg_library {
     CImg<T>& minabs(const T& value) {
       if (is_empty()) return *this;
       const T absvalue = cimg::abs(value);
-      cimg_openmp_for(*this,cimg::minabs(*ptr,value,absvalue),65536);
+      cimg_openmp_for(*this,cimg::minabs(*ptr,value,absvalue),65536,T);
       return *this;
     }
 
@@ -31694,7 +31699,7 @@ namespace cimg_library {
     CImg<T>& maxabs(const T& value) {
       if (is_empty()) return *this;
       const T absvalue = cimg::abs(value);
-      cimg_openmp_for(*this,cimg::maxabs(*ptr,value,absvalue),65536);
+      cimg_openmp_for(*this,cimg::maxabs(*ptr,value,absvalue),65536,T);
       return *this;
     }
 
@@ -35597,7 +35602,7 @@ namespace cimg_library {
        - \c 1: Forward.
     **/
     CImg<T>& round(const double y=1, const int rounding_type=0) {
-      if (y>0) cimg_openmp_for(*this,cimg::round(*ptr,y,rounding_type),8192);
+      if (y>0) cimg_openmp_for(*this,cimg::round(*ptr,y,rounding_type),8192,T);
       return *this;
     }
 
@@ -35916,7 +35921,7 @@ namespace cimg_library {
       const T
         a = min_value<max_value?min_value:max_value,
         b = min_value<max_value?max_value:min_value;
-      cimg_openmp_for(*this,cimg::cut(*ptr,a,b),32768);
+      cimg_openmp_for(*this,cimg::cut(*ptr,a,b),32768,T);
       return *this;
     }
 
@@ -35936,7 +35941,7 @@ namespace cimg_library {
       const T
         a = min_value<max_value?min_value:max_value,
         b = min_value<max_value?max_value:min_value;
-      cimg_openmp_for(*this,cimg::abscut(*ptr,a,b,offset),32768);
+      cimg_openmp_for(*this,cimg::abscut(*ptr,a,b,offset),32768,T);
       return *this;
     }
 
@@ -46117,7 +46122,7 @@ namespace cimg_library {
             // Update displacement field.
             float Vmin,Vmax = V.max_min(Vmin);
             const float _dt = dt/std::max(cimg::abs(Vmin),cimg::abs(Vmax));
-            cimg_openmp_for(U,*ptr + _dt*V[ptr - U._data],32768);
+            cimg_openmp_for(U,*ptr + _dt*V[ptr - U._data],32768,float);
 
             if (C) // Apply constraints
               cimg_forXYZ(C,x,y,z) {
@@ -46188,7 +46193,7 @@ namespace cimg_library {
             // Update displacement field.
             float Vmin,Vmax = V.max_min(Vmin);
             const float _dt = dt/std::max(cimg::abs(Vmin),cimg::abs(Vmax));
-            cimg_openmp_for(U,*ptr + _dt*V[ptr - U._data],32768);
+            cimg_openmp_for(U,*ptr + _dt*V[ptr - U._data],32768,float);
 
             if (C) // Apply constraints
               cimg_forXY(C,x,y) {
@@ -54395,16 +54400,18 @@ namespace cimg_library {
           const float
             fact0 = (zc - z0)/(z1 - z0), nfx0 = fx0 + fact0*(fx1 - fx0), nfy0 = fy0 + fact0*(fy1 - fy0),
             fact1 = (zc - z0)/(z2 - z0), nfx1 = fx0 + fact1*(fx2 - fx0), nfy1 = fy0 + fact1*(fy2 - fy0),
+            nbs0 = bs0 + fact0*(bs1 - bs0),
+            nbs1 = bs0 + fact1*(bs2 - bs0),
             nz0 = zc, nz1 = zc;
           const int
             nx0 = cimg::uiround(X + focale*nfx0/nz0), ny0 = cimg::uiround(Y + focale*nfy0/nz0),
-            nx1 = cimg::uiround(X + focale*nfx1/nz1), ny1 = cimg::uiround(Y + focale*nfy1/nz1),
-            nbs0 = bs0 + fact0*(bs1 - bs0),
-            nbs1 = bs0 + fact1*(bs2 - bs0);
+            nx1 = cimg::uiround(X + focale*nfx1/nz1), ny1 = cimg::uiround(Y + focale*nfy1/nz1);
           if (zbuffer) draw_triangle(zbuffer,nx0,ny0,nz0,x1,y1,z1,x2,y2,z2,color,nbs0,bs1,bs2,opacity).
                          draw_triangle(zbuffer,nx0,ny0,nz0,nx1,ny1,nz1,x2,y2,z2,color,nbs0,nbs1,bs2,opacity);
           else draw_triangle(nx0,ny0,x1,y1,x2,y2,color,nbs0,bs1,bs2,opacity).
                  draw_triangle(nx0,ny0,nx1,ny1,x2,y2,color,nbs0,nbs1,bs2,opacity);
+
+
           return *this;
         }
       }
@@ -54455,20 +54462,22 @@ namespace cimg_library {
           const float
             fact0 = (zc - z0)/(z1 - z0), nfx0 = fx0 + fact0*(fx1 - fx0), nfy0 = fy0 + fact0*(fy1 - fy0),
             fact1 = (zc - z0)/(z2 - z0), nfx1 = fx0 + fact1*(fx2 - fx0), nfy1 = fy0 + fact1*(fy2 - fy0),
+            nbs0 = bs0 + fact0*(bs1 - bs0),
+            nbs1 = bs0 + fact1*(bs2 - bs0),
             nz0 = zc, nz1 = zc;
           const int
-            nx0 = cimg::uiround(X + focale*nfx0/z0), ny0 = cimg::uiround(Y + focale*nfy0/z0),
-            nx1 = cimg::uiround(X + focale*nfx1/z1), ny1 = cimg::uiround(Y + focale*nfy1/z1),
+            nx0 = cimg::uiround(X + focale*nfx0/nz0), ny0 = cimg::uiround(Y + focale*nfy0/nz0),
+            nx1 = cimg::uiround(X + focale*nfx1/nz1), ny1 = cimg::uiround(Y + focale*nfy1/nz1),
             ntx0 = cimg::uiround(tx0 + fact0*(tx1 - tx0)), nty0 = cimg::uiround(ty0 + fact0*(ty1 - ty0)),
-            ntx1 = cimg::uiround(tx0 + fact1*(tx2 - tx0)), nty1 = cimg::uiround(ty0 + fact1*(ty2 - ty0)),
-            nbs0 = bs0 + fact0*(bs1 - bs0),
-            nbs1 = bs0 + fact1*(bs2 - bs0);
-          if (zbuffer) draw_triangle(zbuffer,nx0,ny0,nz0,x1,y1,z1,x2,y2,z2,texture,ntx0,nty0,tx1,ty1,tx2,ty2,
-                                     nbs0,bs1,bs2,opacity).
-                         draw_triangle(zbuffer,nx0,ny0,nz0,nx1,ny1,nz1,x2,y2,z2,texture,ntx0,nty0,ntx1,nty1,tx2,ty2,
-                                       nbs0,nbs1,bs2,opacity);
-          else draw_triangle(nx0,ny0,x1,y1,x2,y2,texture,ntx0,nty0,tx1,ty1,tx2,ty2,nbs0,bs1,bs2,opacity).
-                 draw_triangle(nx0,ny0,nx1,ny1,x2,y2,texture,ntx0,nty0,ntx1,nty1,tx2,ty2,nbs0,nbs1,bs2,opacity);
+            ntx1 = cimg::uiround(tx0 + fact1*(tx2 - tx0)), nty1 = cimg::uiround(ty0 + fact1*(ty2 - ty0));
+          if (zbuffer) draw_triangle(zbuffer,nx0,ny0,nz0,x1,y1,z1,x2,y2,z2,
+                                     texture,ntx0,nty0,tx1,ty1,tx2,ty2,nbs0,bs1,bs2,opacity).
+                         draw_triangle(zbuffer,nx0,ny0,nz0,nx1,ny1,nz1,x2,y2,z2,
+                                       texture,ntx0,nty0,ntx1,nty1,tx2,ty2,nbs0,nbs1,bs2,opacity);
+          else draw_triangle(nx0,ny0,nz0,x1,y1,z1,x2,y2,z2,
+                             texture,ntx0,nty0,tx1,ty1,tx2,ty2,nbs0,bs1,bs2,opacity).
+                 draw_triangle(nx0,ny0,nz0,nx1,ny1,nz1,x2,y2,z2,
+                               texture,ntx0,nty0,ntx1,nty1,tx2,ty2,nbs0,nbs1,bs2,opacity);
           return *this;
         }
       }
@@ -70003,8 +70012,74 @@ namespace cimg_library {
 
       // Sort resulting list by lexicographic order.
       if (res._width>=2) std::qsort(res._data,res._width,sizeof(CImg<char>),_sort_files);
-
       return res;
+    }
+
+    inline void _create_directory(const char *const dirname, const bool force_overwrite) {
+      bool is_error = false;
+      if (cimg::is_directory(dirname)) return;
+      if (cimg::is_file(dirname)) { // In case 'dirname' is already an existing filename
+        if (!force_overwrite) is_error = true;
+        else {
+#if cimg_OS==2
+          is_error = !DeleteFileA(dirname);
+#elif cimg_OS==1
+          is_error = (bool)std::remove(dirname);
+#endif
+        }
+      }
+      if (!is_error) {
+#if cimg_OS==2
+        if (!CreateDirectoryA(dirname,0)) {
+          // The path may be UTF-8, convert it to a wide-character string and try again.
+          const int wideLength = MultiByteToWideChar(CP_UTF8,0,dirname,-1,0,0);
+          if (!wideLength) is_error = true;
+          else {
+            CImg<wchar_t> wpath(wideLength);
+            if (!MultiByteToWideChar(CP_UTF8,0,dirname,-1,wpath,wideLength)) is_error = true;
+            else {
+              DeleteFileW(wpath);
+              is_error = !CreateDirectoryW(wpath,0);
+            }
+          }
+        }
+#elif cimg_OS==1
+        is_error = (bool)mkdir(dirname,0777);
+#endif
+      }
+      if (is_error)
+        throw CImgIOException("cimg::create_dir(): Failed to create directory '%s'.",dirname);
+    }
+
+    //! Create a directory.
+    /**
+       \param dirname The path of the directory to create.
+       \param force_overwrite Force overwrite of the directory when necessary.
+    **/
+    inline void create_directory(const char *const dirname, const bool force_overwrite) {
+#if cimg_OS==2
+      const char *const cs = "/\\";
+#else
+      const char *const cs = "/";
+#endif
+      const char *ptr0 = dirname, *ptr1 = std::strpbrk(ptr0,cs);
+      if (ptr1) {
+        while (ptr1) { // Manage case where 'dirname' is a path with separators (multiple directories)
+          if (ptr1!=ptr0) {
+            CImg<char> subdir(dirname,ptr1 - dirname + 1);
+            subdir.back() = 0;
+            _create_directory(subdir,force_overwrite);
+          }
+          ptr0 = ++ptr1;
+          ptr1 = std::strpbrk(ptr0,cs);
+        }
+#if cimg_OS==2
+        const bool cond = *ptr0!='/' && *ptr0!='\\';
+#else
+        const bool cond = *ptr0!='/';
+#endif
+        if (*ptr0 && cond) _create_directory(dirname,force_overwrite);
+      } else _create_directory(dirname,force_overwrite);
     }
 
     //! Try to guess format from an image file.
