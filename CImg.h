@@ -54,7 +54,7 @@
 
 // Set version number of the library.
 #ifndef cimg_version
-#define cimg_version 377
+#define cimg_version 400
 
 /*-----------------------------------------------------------
  #
@@ -2371,7 +2371,22 @@ namespace cimg_library {
 
     //! Avoid warning messages due to unused parameters. Do nothing actually.
     template<typename T>
-    inline void unused(const T&, ...) {}
+    inline void unused(const T&) {}
+
+    template<typename T1,typename T2>
+    inline void unused(const T1&, const T2&) {}
+
+    template<typename T1,typename T2, typename T3>
+    inline void unused(const T1&, const T2&, const T3&) {}
+
+    template<typename T1,typename T2, typename T3, typename T4>
+    inline void unused(const T1&, const T2&, const T3&, const T4&) {}
+
+    template<typename T1,typename T2, typename T3, typename T4, typename T5>
+    inline void unused(const T1&, const T2&, const T3&, const T4&, const T5&) {}
+
+    template<typename T1,typename T2, typename T3, typename T4, typename T5, typename T6>
+    inline void unused(const T1&, const T2&, const T3&, const T4&, const T5&, const T6&) {}
 
     // [internal] Lock/unlock a mutex for managing concurrent threads.
     // 'lock_mode' can be { 0=unlock | 1=lock | 2=trylock }.
@@ -18671,6 +18686,7 @@ namespace cimg_library {
               s0+=6; while (cimg::is_blank(*s0)) ++s0;
               variable_name.resize(variable_name.end() - s0,1,1,1,0,0,1);
             }
+
             if (cimg::is_varname(variable_name)) { // Valid variable name
 
               // Assign variable (direct).
@@ -18737,7 +18753,8 @@ namespace cimg_library {
                           std::memset(&memtype[mempos],0,sizeof(int)*size(arg3) + 1);
                         }
                       } else {
-                        is_sth = is_comp_vector(arg3) && pop[1]==arg3;
+                        is_sth = is_comp_vector(arg3) && pop[1]==arg3 &&
+                          fn!=mp_set_IJoff_v && fn!=mp_set_IJxyz_v;
                         if (is_sth)
                           for (unsigned int k = 2; k<pop.size(); ++k) if (pop[k]==arg3) { is_sth = false; break; }
                         if (is_sth) {
@@ -18758,7 +18775,9 @@ namespace cimg_library {
                 } else { // Scalar
                   if (arg1!=arg3) {
                     CImg<ulongT> &pop = code.back();
-                    is_sth = is_comp_scalar(arg3) && pop[1]==arg3;
+                    mp_func fn = (mp_func)pop[0];
+                    is_sth = is_comp_scalar(arg3) && pop[1]==arg3 &&
+                      fn!=mp_set_ijoff && fn!=mp_set_ijxyzc && fn!=mp_set_IJoff_s && fn!=mp_set_IJxyz_s;
                     if (is_sth)
                       for (unsigned int k = 2; k<pop.size(); ++k) if (pop[k]==arg3) { is_sth = false; break; }
                     if (is_sth) {
@@ -18890,7 +18909,8 @@ namespace cimg_library {
                         std::memset(&memtype[mempos],0,sizeof(int)*size(arg2) + 1);
                       }
                     } else {
-                      is_sth = is_comp_vector(arg2) && pop[1]==arg2;
+                      is_sth = is_comp_vector(arg2) && pop[1]==arg2 &&
+                        fn!=mp_set_IJoff_v && fn!=mp_set_IJxyz_v;
                       if (is_sth)
                         for (unsigned int k = 2; k<pop.size(); ++k) if (pop[k]==arg2) { is_sth = false; break; }
                       if (is_sth) {
@@ -18908,6 +18928,7 @@ namespace cimg_library {
                 } else // From scalar
                   CImg<ulongT>::vector((ulongT)mp_vector_init,arg1,(ulongT)size(arg1),1,arg2,0).
                     move_to(code);
+                return_comp = false;
                 _cimg_mp_return(arg1);
               }
 
@@ -18915,7 +18936,9 @@ namespace cimg_library {
                 _cimg_mp_check_type(arg2,2,1,0);
                 if (arg1!=arg2) {
                   CImg<ulongT> &pop = code.back();
-                  is_sth = is_comp_scalar(arg2) && pop[1]==arg2;
+                  mp_func fn = (mp_func)pop[0];
+                  is_sth = is_comp_scalar(arg2) && pop[1]==arg2 &&
+                    fn!=mp_set_ijoff && fn!=mp_set_ijxyzc && fn!=mp_set_IJoff_s && fn!=mp_set_IJxyz_s;
                   if (is_sth)
                     for (unsigned int k = 2; k<pop.size(); ++k) if (pop[k]==arg2) { is_sth = false; break; }
                   if (is_sth) {
@@ -18925,9 +18948,9 @@ namespace cimg_library {
                   } else
                     CImg<ulongT>::vector((ulongT)mp_copy,arg1,arg2).move_to(code);
                 }
+                return_comp = false;
+                _cimg_mp_return(arg1);
               }
-              return_comp = false;
-              _cimg_mp_return(arg1);
             }
 
             // No assignment expressions match -> error.
@@ -46156,6 +46179,8 @@ namespace cimg_library {
     /**
        \param reference Reference image R.
        \param smoothness Smoothness of estimated displacement field.
+       If smoothness is positive, Tikhonov regularization is applied, otherwise TV regularization is applied,
+       with specified strength (absolute value of the smoothnes).
        \param precision Precision required for algorithm convergence.
        \param nb_scales Number of scales used to estimate the displacement field.
        \param iteration_max Maximum number of iterations allowed for one scale.
@@ -46186,12 +46211,6 @@ namespace cimg_library {
                                     cimg_instance,
                                     reference._width,reference._height,reference._depth,reference._spectrum,
                                     reference._data);
-      if (smoothness<0)
-        throw CImgArgumentException(_cimg_instance
-                                    "displacement(): Invalid specified smoothness %g "
-                                    "(should be >=0)",
-                                    cimg_instance,
-                                    smoothness);
       if (precision<0)
         throw CImgArgumentException(_cimg_instance
                                     "displacement(): Invalid specified precision %g "
@@ -46233,12 +46252,11 @@ namespace cimg_library {
         iM = (Tfloat)R.max_min(im);
         R/=std::max(std::abs(im),std::abs(iM));
 
-        if (guide._spectrum>spectrum_U) { // Guide has constraints
+        if (guide) {
           guide.get_resize(sw,sh,sd,-100,2).move_to(C);
-          Cv.assign(); Cv = C.get_shared_channels(0,spectrum_U - 1);
-          Cm.assign(); Cm = C.get_shared_channel(spectrum_U);
-          Cv/=fact;
-          Cm.normalize(0,1);
+          Cv.assign() = C.get_shared_channels(0,spectrum_U - 1)/=fact;
+          if (guide._spectrum>spectrum_U) // Guide has constraints
+            Cm.assign() = C.get_shared_channel(spectrum_U).normalize(0,1);
         }
 
         if (U) { // Upscale U
@@ -46248,17 +46266,13 @@ namespace cimg_library {
           // ^^ 'vfact' should be close to '2', but slightly more precise.
           (U*=vfact).resize(sw,sh,sd,-100,3);
         } else { // Initialize U
-          if (guide)
-            guide.get_shared_channels(0,spectrum_U - 1).get_resize(sw,sh,sd,-100,2).move_to(U)/=fact;
-          else
-            U.assign(sw,sh,sd,spectrum_U,0);
+          if (Cv) U = Cv; else U.assign(sw,sh,sd,spectrum_U,0);
         }
 
         V.assign(sw,sh,sd,U._spectrum); // Allocate V.
         const CImgList<Tfloat> grad = (is_forward?I:R).get_gradient(is_3d?"xyz":"xy",0);
 
         double prev_energy = cimg::type<float>::max(), dt = 0.5;
-        const double lambda = 100;
 
         const unsigned int nb_iterations = iteration_max==~0U?~0U:(iteration_max*fact);
         cimg_abort_init;
@@ -46294,24 +46308,48 @@ namespace cimg_library {
                 }
 
                 // Regularization term.
-                if (smoothness>0) cimg_forC(U,c) {
+                if (smoothness>0) cimg_forC(U,c) { // Tikhonov
                     const double
                       uccc = U(x,y,z,c),
                       upcc = U(_p1x,y,z,c), uncc = U(_n1x,y,z,c),
                       ucpc = U(x,_p1y,z,c), ucnc = U(x,_n1y,z,c),
                       uccp = U(x,y,_p1z,c), uccn = U(x,y,_n1z,c),
-                      ux = 0.5f*(uncc - upcc), uy = 0.5f*(ucnc - ucpc), uz = 0.5f*(uccn - uccp);
+                      ux = 0.5*(uncc - upcc), uy = 0.5*(ucnc - ucpc), uz = 0.5*(uccn - uccp);
                     energy+=smoothness*(ux*ux + uy*uy + uz*uz);
                     _V[c]+=smoothness*(upcc + uncc + ucpc + ucnc + uccp + uccn - 6*uccc);
+                  } else if (smoothness<0) cimg_forC(U,c) { // Total variation
+                    const double
+                      ucpp = U(x,_p1y,_p1z,c),
+                      upcp = U(_p1x,y,_p1z,c), uccp = U(x,y,_p1z,c), uncp = U(_n1x,y,_p1z,c),
+                      ucnp = U(x,_n1y,_p1z,c),
+                      uppc = U(_p1x,_p1y,z,c), ucpc = U(x,_p1y,z,c), unpc = U(_n1x,_p1y,z,c),
+                      upcc = U(_p1x,y,z,c), uccc = U(x,y,z,c), uncc = U(_n1x,y,z,c),
+                      upnc = U(_p1x,_n1y,z,c), ucnc = U(x,_n1y,z,c), unnc = U(_n1x,_n1y,z,c),
+                      ucpn = U(x,_p1y,_n1z,c),
+                      upcn = U(_p1x,y,_n1z,c), uccn = U(x,y,_n1z,c), uncn = U(_n1x,y,_n1z,c),
+                      ucnn = U(x,_n1y,_n1z,c),
+                      ux = 0.5*(uncc - upcc), uy = 0.5*(ucnc - ucpc), uz = 0.5*(uccn - uccp),
+                      gn = 1e-8 + std::sqrt(ux*ux + uy*uy + uz*uz),
+                      nux = ux/gn, nuy = uy/gn, nuz = uz/gn,
+                      uxx = uncc + upcc - 2*uccc,
+                      uxy = 0.25*(uppc + unnc - upnc - unpc),
+                      uxz = 0.25*(upcp + uncn - upcn - uncp),
+                      uyy = ucnc + ucpc - 2*uccc,
+                      uyz = 0.25*(ucpp + ucnn - ucpn - ucnp),
+                      uzz = uccn + uccp - 2*uccc,
+                      unn = nux*nux*uxx + nuy*nuy*uyy + nuz*nuz*uzz + 2*(nux*nuy*uxy + nux*nuz*uxz + nuy*nuz*uyz),
+                      uee = uxx + uyy + uzz - unn;
+                    energy-=smoothness*gn;
+                    _V[c]-=smoothness*(uee/gn);
                   }
 
                 // Guide term.
                 if (C) {
                   const double w = Cm(x,y,z);
                   if (w>0) cimg_forC(U,c) {
-                      const double diff = U(x,y,z,c) - C(x,y,z,c);
-                      energy+=lambda*w*diff*diff;
-                      _V[c]+=lambda*w*diff;
+                      const double diff = (double)C(x,y,z,c) - U(x,y,z,c);
+                      energy+=w*diff*diff;
+                      _V[c]+=w*diff;
                     }
                 }
 
@@ -46343,23 +46381,37 @@ namespace cimg_library {
                 }
 
                 // Regularization term.
-                if (smoothness>0) cimg_forC(U,c) {
+                if (smoothness>0) cimg_forC(U,c) { // Tikhonov
                     const double
                       ucc = U(x,y,c),
                       upc = U(_p1x,y,c), unc = U(_n1x,y,c),
                       ucp = U(x,_p1y,c), ucn = U(x,_n1y,c),
-                      ux = 0.5f*(unc - upc), uy = 0.5f*(ucn - ucp);
+                      ux = 0.5*(unc - upc), uy = 0.5*(ucn - ucp);
                     energy+=smoothness*(ux*ux + uy*uy);
                     _V[c]+=smoothness*(upc + unc + ucp + ucn - 4*ucc);
+                  } else if (smoothness<0) cimg_forC(U,c) { // Total variation
+                    const double
+                      upp = U(_p1x,_p1y,c), ucp = U(x,_p1y,c), unp = U(_n1x,_p1y,c),
+                      upc = U(_p1x,y,c), ucc = U(x,y,c), unc = U(_n1x,y,c),
+                      upn = U(_p1x,_n1y,c), ucn = U(x,_n1y,c), unn = U(_n1x,_n1y,c),
+                      ux = 0.5*(unc - upc), uy = 0.5*(ucn - ucp),
+                      gn = 1e-8 + std::sqrt(ux*ux + uy*uy),
+                      nux = ux/gn, nuy = uy/gn,
+                      uxx = unc + upc - 2*ucc,
+                      uxy = 0.25*(upp + unn - upn - unp),
+                      uyy = ucn + ucp - 2*ucc,
+                      uee = nuy*nuy*uxx + nux*nux*uyy - 2*nux*nuy*uxy;
+                    energy-=smoothness*gn;
+                    _V[c]-=smoothness*(uee/gn);
                   }
 
                 // Guide term.
                 if (C) {
                   const double w = Cm(x,y);
                   if (w>0) cimg_forC(U,c) {
-                      const double diff = U(x,y,c) - C(x,y,c);
-                      energy+=lambda*w*diff*diff;
-                      _V[c]+=lambda*w*diff;
+                      const double diff = (double)C(x,y,c) - U(x,y,c);
+                      energy+=w*diff*diff;
+                      _V[c]+=w*diff;
                     }
                 }
 
@@ -46373,10 +46425,11 @@ namespace cimg_library {
 
           // Update displacement field.
           Tfloat Vmin,Vmax = V.max_min(Vmin);
-          const double dt_iteration = dt/cimg::max((Tfloat)1e-8f,cimg::abs(Vmin),cimg::abs(Vmax));
+          const double dt_iteration = dt/cimg::max((Tfloat)1e-8,cimg::abs(Vmin),cimg::abs(Vmax));
           cimg_openmp_for(U,*ptr + dt_iteration*V[ptr - U._data],32768,float);
 
-          if (C) U.draw_image(0,0,0,0,Cv,Cm,1,1); // Force constraints even a bit more to speed up convergence
+          // Force guided constraints even a bit more to speed up convergence.
+          if (C) U.draw_image(0,0,0,0,Cv,Cm,1,1);
 
           // Test convergence.
           if (iteration) {
@@ -64865,10 +64918,8 @@ namespace cimg_library {
     template<typename t>
     CImgList<t>& move_to(CImgList<t>& list) {
       list.assign(_width);
-      bool is_one_shared_element = false;
-      cimglist_for(*this,l) is_one_shared_element|=_data[l]._is_shared;
-      if (is_one_shared_element) cimglist_for(*this,l) list[l].assign(_data[l]);
-      else cimglist_for(*this,l) _data[l].move_to(list[l]);
+      cimglist_for(*this,l) if (_data[l]._is_shared) { list[l].assign(_data[l]); _data[l].assign(); }
+      cimglist_for(*this,l) if (_data[l]) _data[l].move_to(list[l]);
       assign();
       return list;
     }
@@ -64885,10 +64936,8 @@ namespace cimg_library {
       if (is_empty()) return list;
       const unsigned int npos = pos>list._width?list._width:pos;
       list.insert(_width,npos);
-      bool is_one_shared_element = false;
-      cimglist_for(*this,l) is_one_shared_element|=_data[l]._is_shared;
-      if (is_one_shared_element) cimglist_for(*this,l) list[npos + l].assign(_data[l]);
-      else cimglist_for(*this,l) _data[l].move_to(list[npos + l]);
+      cimglist_for(*this,l) if (_data[l]._is_shared) { list[npos + l].assign(_data[l]); _data[l].assign(); }
+      cimglist_for(*this,l) if (_data[l]) _data[l].move_to(list[npos + l]);
       assign();
       return list;
     }
@@ -69920,15 +69969,13 @@ namespace cimg_library {
 #endif
         winformat_string(s_path);
 
-        // Put path between double quotes and append ' convert' to it if necessary.
+        // Put path between double quotes.
         const unsigned int siz = (unsigned int)std::strlen(s_path);
-        const bool is_magick = std::strstr(s_path,"magick")?true:false;
-        CImg<char> s_path2(3 + siz + (is_magick?8:0));
+        CImg<char> s_path2(3 + siz);
         char *s = s_path2._data;
         *(s++) = '\"';
         std::memcpy(s,s_path._data,siz); s+=siz;
         *(s++) = '\"';
-        if (is_magick) { std::memcpy(s," convert",8); s+=8; }
         *s = 0;
         s_path2.move_to(s_path);
       }
@@ -70619,8 +70666,8 @@ namespace cimg_library {
                       const char *const button5_label, const char *const button6_label,
                       const CImg<t>& logo, const bool is_centered=false) {
 #if cimg_display==0
-      cimg::unused(title,msg,button1_label,button2_label,button3_label,button4_label,button5_label,button6_label,
-                   logo._data,is_centered);
+      cimg::unused(title,msg,logo._data,is_centered);
+      cimg::unused(button1_label,button2_label,button3_label,button4_label,button5_label,button6_label);
       throw CImgIOException("cimg::dialog(): No display available.");
 #else
       static const unsigned char
